@@ -71,6 +71,16 @@ const GameScreen: FC<GameScreenProps> = ({
 
   const currentPlayer = gameState.players.find((p) => p.id === gameState.currentPlayerId);
 
+  // Build player name map from color key -> display name (for tooltip)
+  const playerNameMap = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const p of gameState.players) {
+      if (p.color) map[p.color] = p.name;
+      if (p.id) map[p.id] = p.name;
+    }
+    return map;
+  }, [gameState.players]);
+
   return (
     <div className="h-screen w-screen bg-gray-900 flex flex-col overflow-hidden">
       {/* Top bar */}
@@ -157,6 +167,7 @@ const GameScreen: FC<GameScreenProps> = ({
             selectedCountry={selectedCountry}
             highlightedCountries={highlightedCountries}
             phase={gameState.turnPhase}
+            playerNames={playerNameMap}
           />
         </div>
       </div>

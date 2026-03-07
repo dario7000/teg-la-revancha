@@ -8,9 +8,10 @@ import type {
   PlayerId,
   PlayerColor,
 } from '@shared/types/GameState';
-import type { CountryCard, SituationCard } from '@shared/types/Cards';
+import type { CountryCard, SituationCard, ContinentCardState } from '@shared/types/Cards';
 import type { Pact } from '@shared/types/Pacts';
 import type { Objective } from '@shared/types/Actions';
+import type { ContinentId } from '@shared/types/GameState';
 
 // ── Room types ──────────────────────────────────────────────────────────────
 
@@ -23,6 +24,20 @@ export interface RoomPlayer {
 
 export type RoomStatus = 'LOBBY' | 'PLAYING' | 'FINISHED';
 
+export interface RoomSettings {
+  enableSituationCards: boolean;
+  enableMissiles: boolean;
+  enablePacts: boolean;
+  turnTimeLimit: number;
+}
+
+export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
+  enableSituationCards: true,
+  enableMissiles: true,
+  enablePacts: true,
+  turnTimeLimit: 120,
+};
+
 export interface RoomState {
   id: string;
   name: string;
@@ -30,6 +45,7 @@ export interface RoomState {
   players: RoomPlayer[];
   maxPlayers: number;
   status: RoomStatus;
+  settings: RoomSettings;
 }
 
 // ── Sanitised game state (as sent by the server for this specific player) ───
@@ -55,6 +71,7 @@ export interface ClientGameState {
   activeSituationCard: SituationCard | null;
   pacts: Pact[];
   reinforcementsLeft: number;
+  continentCards: Record<ContinentId, ContinentCardState> | null;
 }
 
 // ── UI types ────────────────────────────────────────────────────────────────
@@ -64,6 +81,7 @@ export interface LogEntry {
   type: string;
   message: string;
   playerColor?: string;
+  playerId?: string;
 }
 
 export interface DiceResult {

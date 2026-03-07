@@ -7,6 +7,10 @@ export interface TurnControlsProps {
   onEndTurn: () => void;
   onSkipToAttack?: () => void;
   onSkipToRegroup?: () => void;
+  onIncorporateMissile?: () => void;
+  onCancelMissileMode?: () => void;
+  missileIncorporating?: boolean;
+  canIncorporateMissile?: boolean;
   activeSituationCard?: { type: string; description: string };
   isMyTurn: boolean;
   turnTimeLimit?: number;
@@ -50,6 +54,10 @@ const TurnControls: React.FC<TurnControlsProps> = React.memo(
     onEndTurn,
     onSkipToAttack,
     onSkipToRegroup,
+    onIncorporateMissile,
+    onCancelMissileMode,
+    missileIncorporating,
+    canIncorporateMissile,
     activeSituationCard,
     isMyTurn,
     turnTimeLimit,
@@ -82,17 +90,17 @@ const TurnControls: React.FC<TurnControlsProps> = React.memo(
     const isAttackPhase = currentPhase === 'ATTACK';
     const isRegroupPhase = currentPhase === 'REGROUP';
 
-    // "Atacar" button: clickable only during REINFORCE when reinforcementsLeft === 0
+    // "Atacar" button: clickable during REINFORCE to skip to attack phase
     const canSkipToAttack =
-      isMyTurn && isReinforcePhase && reinforcementsLeft === 0 && !!onSkipToAttack;
+      isMyTurn && isReinforcePhase && !!onSkipToAttack;
 
     // "Reagrupar" button: clickable during ATTACK phase to skip to regroup
     const canSkipToRegroup =
       isMyTurn && isAttackPhase && !!onSkipToRegroup;
 
-    // "Terminar Turno" enabled during ATTACK or REGROUP
+    // "Terminar Turno" enabled during REINFORCE, ATTACK or REGROUP
     const canEndTurn =
-      isMyTurn && (isAttackPhase || isRegroupPhase);
+      isMyTurn && (isReinforcePhase || isAttackPhase || isRegroupPhase);
 
     return (
       <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20">
@@ -143,6 +151,14 @@ const TurnControls: React.FC<TurnControlsProps> = React.memo(
                   (todos colocados)
                 </span>
               )}
+            </div>
+          )}
+
+          {/* Missile incorporation mode banner */}
+          {missileIncorporating && isMyTurn && (
+            <div className="mb-2 text-xs text-orange-400 bg-orange-900/30 border border-orange-800/40 rounded-lg px-3 py-1.5 flex items-center gap-2">
+              <span>&#x1F680;</span>
+              <span>Selecciona un pais propio con 7+ ejercitos para incorporar misil</span>
             </div>
           )}
 
@@ -249,6 +265,39 @@ const TurnControls: React.FC<TurnControlsProps> = React.memo(
               <span>&#x2194;</span>
               <span>Reagrupar</span>
             </button>
+
+            {/* Incorporar Misil - only during REINFORCE phase */}
+            {isReinforcePhase && isMyTurn && (
+              missileIncorporating ? (
+                <button
+                  onClick={onCancelMissileMode}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 bg-gray-600 hover:bg-gray-500 text-gray-200 cursor-pointer shadow-md"
+                >
+                  <span>&#x2715;</span>
+                  <span>Cancelar Misil</span>
+                </button>
+              ) : (
+                <button
+                  onClick={canIncorporateMissile ? onIncorporateMissile : undefined}
+                  disabled={!canIncorporateMissile}
+                  className={`
+                    flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                    transition-all duration-150
+                    ${
+                      canIncorporateMissile
+                        ? 'bg-orange-700 hover:bg-orange-600 text-white cursor-pointer shadow-md shadow-orange-700/30'
+                        : 'bg-gray-800/50 text-gray-600 cursor-not-allowed'
+                    }
+                  `}
+                  title={canIncorporateMissile
+                    ? 'Convierte 6 ejercitos en 1 misil (pais con 7+ ejercitos)'
+                    : 'Necesitas un pais con 7+ ejercitos'}
+                >
+                  <span>&#x1F680;</span>
+                  <span>Misil (6 ej.)</span>
+                </button>
+              )
+            )}
 
             {/* Divider */}
             <div className="w-px h-6 bg-gray-700 mx-1" />

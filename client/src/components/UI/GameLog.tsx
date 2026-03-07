@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import ChatInput from './ChatInput';
 
 export interface GameLogEvent {
   timestamp: number;
@@ -9,6 +10,7 @@ export interface GameLogEvent {
 
 export interface GameLogProps {
   events: GameLogEvent[];
+  onSendChat?: (text: string, isDiplomacy: boolean) => void;
 }
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
@@ -21,6 +23,11 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   regroup: 'text-cyan-400',
   system: 'text-gray-400',
   card: 'text-purple-400',
+  error: 'text-red-500',
+  info: 'text-blue-300',
+  turn: 'text-amber-400',
+  chat: 'text-gray-300',
+  diplomacy: 'text-amber-300',
 };
 
 function getEventColor(type: string): string {
@@ -35,7 +42,7 @@ function formatTimestamp(ts: number): string {
   return `${h}:${m}:${s}`;
 }
 
-const GameLog: React.FC<GameLogProps> = React.memo(({ events }) => {
+const GameLog: React.FC<GameLogProps> = React.memo(({ events, onSendChat }) => {
   const [collapsed, setCollapsed] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -75,7 +82,9 @@ const GameLog: React.FC<GameLogProps> = React.memo(({ events }) => {
       {!collapsed && (
         <div
           ref={scrollRef}
-          className="bg-gray-900/90 backdrop-blur-sm border border-t-0 border-gray-700 rounded-b-lg overflow-y-auto max-h-80 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent"
+          className={`bg-gray-900/90 backdrop-blur-sm border border-t-0 border-gray-700 overflow-y-auto max-h-80 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent ${
+            onSendChat ? '' : 'rounded-b-lg'
+          }`}
         >
           {events.length === 0 && (
             <div className="px-3 py-4 text-center text-xs text-gray-600">
@@ -106,6 +115,13 @@ const GameLog: React.FC<GameLogProps> = React.memo(({ events }) => {
               </span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Chat input */}
+      {!collapsed && onSendChat && (
+        <div className="bg-gray-900/90 backdrop-blur-sm border border-t-0 border-gray-700 rounded-b-lg p-2">
+          <ChatInput onSend={onSendChat} />
         </div>
       )}
 

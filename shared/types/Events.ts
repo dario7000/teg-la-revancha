@@ -6,7 +6,7 @@ import { GameSettings, CommunicationStyle } from '../constants';
 
 export interface ClientEvents {
   'lobby:create': (settings: { roomName?: string; maxPlayers?: number; playerName?: string }) => void;
-  'lobby:join': (data: { roomId: string; playerName: string }) => void;
+  'lobby:join': (roomId: string, playerName: string) => void;
   'lobby:ready': () => void;
   'lobby:start': () => void;
   'lobby:selectColor': (color: PlayerColor) => void;
@@ -20,6 +20,7 @@ export interface ClientEvents {
   'turn:attack': (from: CountryId, to: CountryId, dice: number) => void;
   'turn:conquestMove': (armies: number) => void;
   'turn:fireMissile': (from: CountryId, target: CountryId) => void;
+  'turn:incorporateMissile': (countryId: CountryId) => void;
   'turn:regroup': (moves: RegroupAction[]) => void;
   'turn:drawCard': () => void;
   'turn:drawContinentCard': (continent: ContinentId) => void;
@@ -55,11 +56,12 @@ export interface ServerEvents {
   'blockade:broken': (country: CountryId) => void;
   'player:eliminated': (playerId: PlayerId, by: PlayerId) => void;
   'player:inheritedCards': (count: number) => void;
-  'game:victory': (winnerId: PlayerId, method: 'OBJECTIVE' | 'COMMON_45') => void;
+  'game:victory': (winnerId: PlayerId, method: 'OBJECTIVE' | 'COMMON_45', winnerName: string) => void;
   'turn:orderChanged': (newOrder: PlayerId[]) => void;
   'lobby:updated': (lobby: any) => void;
   'room:joined': (room: any) => void;
   'room:list': (rooms: any[]) => void;
   'chat:message': (from: PlayerId, text: string, isDiplomacy: boolean) => void;
+  'game:notification': (message: string) => void;
   'error': (message: string) => void;
 }

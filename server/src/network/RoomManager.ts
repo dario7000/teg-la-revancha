@@ -43,6 +43,14 @@ export interface Room {
   // Runtime game-state tracking (managed by EventRouter)
   /** Tracks the from/to of the most recent conquest awaiting a troop move. */
   pendingConquest?: { from: string; to: string };
+  /** Tracks an active aggression pact attack — the ally can also attack the target. */
+  pendingAggression?: {
+    pactId: string;
+    targetCountry: string;
+    attackerId: string;
+    allyId: string;
+    attackerConquered: boolean;
+  };
   /** Remaining reinforcements for the current player this turn. */
   reinforcementsLeft?: number;
 }

@@ -4,9 +4,10 @@ import { useGameStore } from '../store/gameStore';
 import type { ClientEvents, ServerEvents } from '@shared/types/Events';
 import type { CombatResult } from '@shared/types/Actions';
 import type { CountryId, PlayerColor, ContinentId } from '@shared/types/GameState';
-import type { DiceResult, LogEntry } from '../store/gameStore';
+import type { DiceResult, LogEntry, RoomSettings } from '../store/gameStore';
+import { DEFAULT_ROOM_SETTINGS } from '../store/gameStore';
 
-const SERVER_URL = 'http://localhost:3001';
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
 
 /**
  * Custom hook that manages a singleton Socket.io connection to the game
@@ -46,11 +47,23 @@ export function useSocket() {
 
     // ── Connection events ───────────────────────────────────────────────
 
+    let wasConnected = false;
+
     socket.on('connect', () => {
       setConnected(true);
       if (socket.id) {
         setPlayerId(socket.id);
       }
+
+      if (wasConnected) {
+        // This is a reconnection (not initial connect).
+        // Reset stale game state – the server will send a fresh
+        // game:fullState (with yourPlayerId) if the game still exists.
+        // If the server restarted, it won't know about us and we'll
+        // land back in the lobby cleanly.
+        reset();
+      }
+      wasConnected = true;
     });
 
     socket.on('disconnect', () => {
@@ -79,6 +92,9 @@ export function useSocket() {
         players: playersArr,
         maxPlayers: raw.maxPlayers ?? 6,
         status: raw.status ?? 'LOBBY',
+        settings: raw.settings
+          ? { ...DEFAULT_ROOM_SETTINGS, ...raw.settings }
+          : { ...DEFAULT_ROOM_SETTINGS },
       };
     };
 
@@ -103,6 +119,10 @@ export function useSocket() {
     // ── Game state events ───────────────────────────────────────────────
 
     socket.on('game:fullState', (state: any) => {
+      // Server sends yourPlayerId to correct player identity after reconnection
+      if (state.yourPlayerId) {
+        setPlayerId(state.yourPlayerId);
+      }
       setGameState(state);
     });
 
@@ -172,7 +192,7 @@ export function useSocket() {
       addLogEntry({
         timestamp: Date.now(),
         type: 'card',
-        message: `Bonus disponible en ${country}: colocar 2 ejercitos extra`,
+        message: `Bonus aplicado en ${country}: +3 ejercitos extra`,
       });
     });
 
@@ -280,14 +300,16 @@ export function useSocket() {
 
     // ── Victory ─────────────────────────────────────────────────────────
 
-    socket.on('game:victory', (winnerId, method) => {
+    socket.on('game:victory', (winnerId, method, winnerName) => {
+      const displayName = winnerName || winnerId;
       addLogEntry({
         timestamp: Date.now(),
         type: 'victory',
+        playerId: winnerId,
         message:
           method === 'COMMON_45'
-            ? `${winnerId} gana por objetivo comun (45 paises)!`
-            : `${winnerId} completa su objetivo secreto y gana!`,
+            ? `${displayName} gana por objetivo comun (45 paises)!`
+            : `${displayName} completa su objetivo secreto y gana!`,
       });
     });
 
@@ -312,14 +334,7 @@ export function useSocket() {
     });
 
     // ── Errors ──────────────────────────────────────────────────────────
-
-    socket.on('error', (message: string) => {
-      addLogEntry({
-        timestamp: Date.now(),
-        type: 'error',
-        message: `Error: ${message}`,
-      });
-    });
+    // (duplicate removed - error listener already registered above at line ~93)
 
     // ── Cleanup on unmount ──────────────────────────────────────────────
 
@@ -395,6 +410,15 @@ export function useSocket() {
     socket.emit('lobby:start');
   }, [getSocket]);
 
+  const updateSettings = useCallback(
+    (settings: Partial<RoomSettings>) => {
+      const socket = getSocket();
+      if (!socket) return;
+      socket.emit('room:settings', settings);
+    },
+    [getSocket],
+  );
+
   // ── Setup actions ─────────────────────────────────────────────────────
 
   const placeArmies = useCallback(
@@ -454,8 +478,7 @@ export function useSocket() {
   const skipToAttack = useCallback(() => {
     const socket = getSocket();
     if (!socket) return;
-    // Sending empty placements advances the server to ATTACK phase
-    socket.emit('turn:reinforce', {});
+    socket.emit('turn:skipToAttack' as any);
   }, [getSocket]);
 
   const skipToRegroup = useCallback(() => {
@@ -495,6 +518,15 @@ export function useSocket() {
       const socket = getSocket();
       if (!socket) return;
       socket.emit('turn:fireMissile', from, target);
+    },
+    [getSocket],
+  );
+
+  const incorporateMissile = useCallback(
+    (countryId: CountryId) => {
+      const socket = getSocket();
+      if (!socket) return;
+      (socket as any).emit('turn:incorporateMissile', countryId);
     },
     [getSocket],
   );
@@ -571,6 +603,7 @@ export function useSocket() {
     setColor,
     setReady,
     startGame,
+    updateSettings,
 
     // Setup
     placeArmies,
@@ -589,6 +622,7 @@ export function useSocket() {
 
     // Missiles
     fireMissile,
+    incorporateMissile,
 
     // Pacts
     proposePact,

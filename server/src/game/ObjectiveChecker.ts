@@ -212,6 +212,25 @@ export class ObjectiveChecker {
   }
 
   /**
+   * Calculate the minimum number of countries an objective requires.
+   *
+   * For 3-player games, the player must hold 10 countries beyond this count.
+   * DESTRUCTION/DESTROY_LEFT objectives have no country requirement, so return 0.
+   */
+  countRequiredCountries(
+    objective: Objective,
+    countriesData: { id: string; continent: string; isIsland: boolean }[],
+  ): number {
+    if (objective.type !== 'OCCUPATION') return 0;
+
+    let total = 0;
+    for (const req of objective.requirements) {
+      total += req.count;
+    }
+    return total;
+  }
+
+  /**
    * Check all players for victory conditions.
    * Returns the first player found to have won, or null.
    */

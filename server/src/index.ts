@@ -5,15 +5,23 @@ import cors from 'cors';
 import { RoomManager } from './network/RoomManager';
 import { EventRouter } from './network/EventRouter';
 
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  process.env.CLIENT_URL,
+].filter(Boolean) as string[];
+
 const app = express();
-app.use(cors());
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: 'http://localhost:3000',
+    origin: allowedOrigins,
     methods: ['GET', 'POST'],
+    credentials: true,
   },
+  transports: ['websocket', 'polling'],
 });
 
 const PORT = process.env.PORT || 3001;
@@ -44,7 +52,7 @@ io.on('connection', (socket) => {
 // ---------------------------------------------------------------------------
 
 app.get('/', (_req, res) => {
-  res.json({ name: 'TEG La Revancha Server', status: 'running', client: 'http://localhost:3000' });
+  res.json({ name: 'TEG La Revancha Server', status: 'running', origins: allowedOrigins });
 });
 
 app.get('/health', (_req, res) => {

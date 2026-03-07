@@ -194,6 +194,10 @@ export class PactSystem {
   // Queries
   // ---------------------------------------------------------------------------
 
+  getPact(pactId: string): Pact | undefined {
+    return this.pacts.get(pactId);
+  }
+
   getPactsBetween(player1: PlayerId, player2: PlayerId): Pact[] {
     const result: Pact[] = [];
     for (const pact of this.pacts.values()) {
@@ -492,6 +496,10 @@ export class PactSystem {
     return this.condominiums.get(countryId) ?? null;
   }
 
+  getCondominiums(): Condominium[] {
+    return Array.from(this.condominiums.values());
+  }
+
   removeCondominium(countryId: CountryId): void {
     this.condominiums.delete(countryId);
   }
@@ -513,6 +521,10 @@ export class PactSystem {
 
   isInternationalZone(countryId: CountryId): boolean {
     return this.internationalZones.has(countryId);
+  }
+
+  getInternationalZonesList(): CountryId[] {
+    return Array.from(this.internationalZones);
   }
 
   removeInternationalZone(countryId: CountryId): void {

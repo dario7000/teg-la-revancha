@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useGameStore } from './store/gameStore';
+import { useGameStore, DEFAULT_ROOM_SETTINGS } from './store/gameStore';
 import { useSocket } from './hooks/useSocket';
 import { useGameActions } from './hooks/useGameActions';
 import {
@@ -8,12 +8,18 @@ import {
   RoomList,
   WaitingRoom,
 } from './components/Lobby';
-import { GameMap } from './components/Map';
+import { GameMap, PLAYER_COLORS } from './components/Map';
+import type { MissileImpactData, MissileLaunchLineData } from './components/Map';
+import { computeMissileRange } from './utils/missileRange';
+import type { MissileRangeProps } from './components/Map/MissileRange';
 import {
   DiceRoller,
   CardHand,
   TurnControls,
   GameLog,
+  RegroupSelector,
+  PactPanel,
+  ContinentCardPanel,
 } from './components/UI';
 import {
   VictoryModal,
@@ -21,7 +27,8 @@ import {
   SituationCardModal,
 } from './components/Modals';
 import { PactResponseModal } from './components/Modals';
-import type { PlayerColor } from '@shared/types/GameState';
+import PactProposalModal from './components/Modals/PactModal';
+import type { PlayerColor, ContinentId } from '@shared/types/GameState';
 
 // ============================================================
 // Client-side adjacency map (mirrors server/src/data/adjacency.ts)
@@ -179,6 +186,8 @@ function App() {
   >([]);
   const [showObjective, setShowObjective] = useState(false);
   const [showSituationCard, setShowSituationCard] = useState(false);
+  const [showContinentCards, setShowContinentCards] = useState(false);
+  const [selectedContinentCards, setSelectedContinentCards] = useState<Set<string>>(new Set());
   const [pendingPact, setPendingPact] = useState<{
     pactId: string;
     fromPlayerName: string;
@@ -196,8 +205,29 @@ function App() {
   // -- Game interaction state ----------------------------------
   const [attackSource, setAttackSource] = useState<string | null>(null);
   const [regroupSource, setRegroupSource] = useState<string | null>(null);
+  const [regroupPending, setRegroupPending] = useState<{
+    from: string;
+    to: string;
+    maxArmies: number;
+  } | null>(null);
+  // Active pacts panel
+  const [showActivePacts, setShowActivePacts] = useState(false);
+  // Missile firing mode (ATTACK phase)
+  const [missileFiring, setMissileFiring] = useState(false);
+  const [missileSource, setMissileSource] = useState<string | null>(null);
+  // Missile incorporation mode (REINFORCE phase)
+  const [missileIncorporating, setMissileIncorporating] = useState(false);
+  // Missile impact visual effect state
+  const [missileImpact, setMissileImpact] = useState<MissileImpactData | null>(null);
+  // Missile launch line visual effect state
+  const [missileLaunchLine, setMissileLaunchLine] = useState<MissileLaunchLineData | null>(null);
+  // Pact proposal
+  const [showPactProposal, setShowPactProposal] = useState(false);
+  const [pactTargetPlayer, setPactTargetPlayer] = useState<string | null>(null);
   const [conquestPending, setConquestPending] = useState<ConquestPending | null>(null);
   const [conquestArmies, setConquestArmies] = useState<number>(1);
+  // DEBUG: last click result
+  const [lastClickDebug, setLastClickDebug] = useState<string>('(ningún click aún)');
   // Track accumulated reinforcement placements before sending to server
   const [reinforcePlacements, setReinforcePlacements] = useState<Record<string, number>>({});
   const [reinforcementsSpent, setReinforcementsSpent] = useState(0);
@@ -205,14 +235,44 @@ function App() {
   const attackSourceRef = useRef<string | null>(null);
   attackSourceRef.current = attackSource;
 
-  // Track previous situation card so we can auto-show when a new one appears
-  const prevSituationCardRef = useRef(gameState?.activeSituationCard ?? null);
+  // Track previous situation card ID + round so we only show modal on new card reveal
+  const prevSituationRef = useRef<{ cardId: string | null; round: number }>({
+    cardId: gameState?.activeSituationCard?.id ?? null,
+    round: gameState?.round ?? 0,
+  });
+
+  // Refs to prevent double-firing auto draw card / end turn
+  const drawCardFiredRef = useRef(false);
+  const drawContinentFiredRef = useRef(false);
 
   // -- Computed values -----------------------------------------
   const isMyTurn = useMemo(() => {
     if (!gameState || !playerId) return false;
     return gameState.currentPlayerId === playerId;
   }, [gameState, playerId]);
+
+  // Build mapping from player socket ID to hex color code for map rendering
+  const playerColorMap = useMemo(() => {
+    if (!gameState?.players) return {};
+    const map: Record<string, string> = {};
+    for (const p of gameState.players) {
+      if (p.color && PLAYER_COLORS[p.color]) {
+        map[p.id] = PLAYER_COLORS[p.color];
+      }
+    }
+    return map;
+  }, [gameState?.players]);
+
+  // Build mapping from player ID / color key to display name (for tooltips)
+  const playerNameMap = useMemo(() => {
+    if (!gameState?.players) return {};
+    const map: Record<string, string> = {};
+    for (const p of gameState.players) {
+      if (p.color) map[p.color] = p.name;
+      if (p.id) map[p.id] = p.name;
+    }
+    return map;
+  }, [gameState?.players]);
 
   const myTerritoryIds = useMemo(() => {
     if (!gameState || !playerId) return new Set<string>();
@@ -229,6 +289,26 @@ function App() {
     if (!gameState) return 0;
     return gameState.reinforcementsLeft - reinforcementsSpent;
   }, [gameState, reinforcementsSpent]);
+
+  // Compute missile range overlay when in missile firing mode
+  const missileRangeData = useMemo((): MissileRangeProps | null => {
+    if (!missileFiring || !missileSource || !gameState || !playerId) return null;
+    return computeMissileRange(
+      missileSource,
+      ADJACENCY,
+      gameState.territories,
+      playerId,
+    );
+  }, [missileFiring, missileSource, gameState, playerId]);
+
+  // Can the player incorporate a missile? (has at least one own territory with 7+ armies)
+  const canIncorporateMissile = useMemo(() => {
+    if (!gameState || !playerId || !isMyTurn) return false;
+    if (gameState.turnPhase !== 'REINFORCE') return false;
+    return Object.entries(gameState.territories).some(
+      ([, t]) => t.owner === playerId && t.armies >= 7,
+    );
+  }, [gameState, playerId, isMyTurn]);
 
   // -- Listen for combat:conquered events ----------------------
   useEffect(() => {
@@ -255,25 +335,64 @@ function App() {
     };
   }, [socket, playerId]);
 
+  // -- Listen for missile:impact events (visual effects) --------
+  useEffect(() => {
+    const rawSocket = socket.getSocket();
+    if (!rawSocket) return;
+
+    const handleMissileImpact = (from: string, target: string, damage: number) => {
+      const ts = Date.now();
+      // Show launch line from source to target
+      setMissileLaunchLine({ fromCountryId: from, toCountryId: target, timestamp: ts });
+      // Show impact explosion on target (delayed slightly so line arrives first)
+      setTimeout(() => {
+        setMissileImpact({ country: target, damage, timestamp: ts });
+      }, 600);
+      // Clear effects after animations complete
+      setTimeout(() => {
+        setMissileImpact(null);
+        setMissileLaunchLine(null);
+      }, 2500);
+    };
+
+    rawSocket.on('missile:impact', handleMissileImpact);
+    return () => {
+      rawSocket.off('missile:impact', handleMissileImpact);
+    };
+  }, [socket]);
+
   // -- Reset interaction state on phase/turn changes -----------
   useEffect(() => {
     setAttackSource(null);
     setRegroupSource(null);
+    setRegroupPending(null);
+    setMissileFiring(false);
+    setMissileSource(null);
+    setMissileIncorporating(false);
     selectCountry(null);
     setReinforcePlacements({});
     setReinforcementsSpent(0);
     // Don't clear conquestPending - it persists across state updates
   }, [gameState?.turnPhase, gameState?.currentPlayerId, selectCountry]);
 
-  // -- Auto-show situation card when a new one is revealed -----
+  // -- Auto-show situation card when a NEW one is revealed (new round) -----
   useEffect(() => {
-    const current = gameState?.activeSituationCard ?? null;
-    const prev = prevSituationCardRef.current;
-    if (current && current !== prev) {
+    const currentCardId = gameState?.activeSituationCard?.id ?? null;
+    const currentRound = gameState?.round ?? 0;
+    const prev = prevSituationRef.current;
+
+    // Only show modal when the card ID changed OR the round changed with a card active.
+    // This prevents re-showing the same card on every game state broadcast.
+    const isNewCard = currentCardId !== null && (
+      currentCardId !== prev.cardId || currentRound !== prev.round
+    );
+
+    if (isNewCard) {
       setShowSituationCard(true);
     }
-    prevSituationCardRef.current = current;
-  }, [gameState?.activeSituationCard]);
+
+    prevSituationRef.current = { cardId: currentCardId, round: currentRound };
+  }, [gameState?.activeSituationCard?.id, gameState?.round]);
 
   // -- Auto-hide dice after 3 seconds --------------------------
   useEffect(() => {
@@ -284,19 +403,47 @@ function App() {
     return () => clearTimeout(timer);
   }, [showDiceResult, hideDice]);
 
+  // -- Auto-draw card when DRAW_CARD phase is active -----------
+  useEffect(() => {
+    if (gameState?.turnPhase === 'DRAW_CARD' && isMyTurn) {
+      if (!drawCardFiredRef.current) {
+        drawCardFiredRef.current = true;
+        socket.drawCard();
+      }
+    } else {
+      drawCardFiredRef.current = false;
+    }
+  }, [gameState?.turnPhase, isMyTurn, socket]);
+
+  // -- Auto-skip DRAW_CONTINENT_CARD phase ---------------------
+  useEffect(() => {
+    if (gameState?.turnPhase === 'DRAW_CONTINENT_CARD' && isMyTurn) {
+      if (!drawContinentFiredRef.current) {
+        drawContinentFiredRef.current = true;
+        socket.endTurn();
+      }
+    } else {
+      drawContinentFiredRef.current = false;
+    }
+  }, [gameState?.turnPhase, isMyTurn, socket]);
+
   // -- Auto-show victory modal ---------------------------------
   useEffect(() => {
     if (gameState?.phase === 'FINISHED' && !victoryInfo) {
       const victoryLog = gameLog.find((e) => e.type === 'victory');
-      const winnerPlayer = gameState.players.find(
-        (p) => !p.eliminated,
-      );
+      // Use the winnerId stored in the log entry to find the correct player.
+      // Do NOT just pick the first non-eliminated player -- that's wrong
+      // when multiple players are still alive.
+      const winnerId = victoryLog?.playerId;
+      const winnerPlayer = winnerId
+        ? gameState.players.find((p) => p.id === winnerId)
+        : null;
       setVictoryInfo({
         winnerName: winnerPlayer?.name ?? 'Desconocido',
         winnerColor: winnerPlayer?.color ?? 'WHITE',
         objectiveDescription:
           victoryLog?.message ?? 'Objetivo completado',
-        isMe: winnerPlayer?.id === playerId,
+        isMe: winnerId === playerId,
       });
     }
   }, [gameState?.phase, gameState?.players, victoryInfo, gameLog, playerId]);
@@ -311,6 +458,9 @@ function App() {
         selectCountry(null);
         setAttackSource(null);
         setRegroupSource(null);
+        setMissileFiring(false);
+        setMissileSource(null);
+        setMissileIncorporating(false);
       }
       if (e.key === 'o' || e.key === 'O') {
         if (gameState?.myObjective) {
@@ -373,13 +523,25 @@ function App() {
 
     switch (turnPhase) {
       case 'REINFORCE': {
-        // Highlight own territories as valid placement targets
-        setHighlightedCountries(Array.from(myTerritoryIds));
+        if (missileIncorporating) {
+          // In missile mode: highlight only own territories with 7+ armies
+          const missileTargets = Object.entries(gameState.territories)
+            .filter(([, t]) => t.owner === playerId && t.armies >= 7)
+            .map(([id]) => id);
+          setHighlightedCountries(missileTargets);
+        } else {
+          // Highlight own territories as valid placement targets
+          setHighlightedCountries(Array.from(myTerritoryIds));
+        }
         break;
       }
 
       case 'ATTACK': {
-        if (attackSource) {
+        if (missileFiring && missileSource) {
+          // Missile firing mode: highlight all enemy countries in missile range (1-3)
+          const range = computeMissileRange(missileSource, ADJACENCY, gameState.territories, playerId);
+          setHighlightedCountries([...range.distance1, ...range.distance2, ...range.distance3]);
+        } else if (attackSource) {
           // Highlight valid attack targets: adjacent enemy territories
           const adjacent = getAdjacentCountries(attackSource);
           const validTargets = adjacent.filter((id) => {
@@ -426,6 +588,9 @@ function App() {
     isMyTurn,
     attackSource,
     regroupSource,
+    missileFiring,
+    missileSource,
+    missileIncorporating,
     myTerritoryIds,
     setHighlightedCountries,
   ]);
@@ -481,23 +646,52 @@ function App() {
   // ============================================================
   const handleCountryClick = useCallback(
     (countryId: string) => {
-      if (!gameState || !playerId) return;
+      // DEBUG: trace every click
+      const debugInfo = {
+        playerId,
+        phase: gameState?.phase,
+        turnPhase: gameState?.turnPhase,
+        currentPlayerId: gameState?.currentPlayerId,
+        isMyTurn,
+        owner: gameState?.territories[countryId]?.owner,
+        isMine: gameState?.territories[countryId]?.owner === playerId,
+        conquestPending: !!conquestPending,
+      };
+      console.log('[CLICK]', countryId, debugInfo);
+
+      if (!gameState || !playerId) {
+        setLastClickDebug(`${countryId}: NO gameState o playerId`);
+        return;
+      }
 
       const territory = gameState.territories[countryId];
-      if (!territory) return;
+      if (!territory) {
+        setLastClickDebug(`${countryId}: territorio no encontrado en gameState`);
+        return;
+      }
 
       const phase = gameState.phase;
       const turnPhase = gameState.turnPhase;
       const isMine = territory.owner === playerId;
 
       // If conquest is pending, ignore regular clicks
-      if (conquestPending) return;
+      if (conquestPending) {
+        setLastClickDebug(`${countryId}: conquista pendiente`);
+        return;
+      }
 
       // -- SETUP PHASE ------------------------------------------
       if (phase === 'SETUP_PLACE_8' || phase === 'SETUP_PLACE_4') {
-        if (!isMyTurn) return;
+        if (!isMyTurn) {
+          setLastClickDebug(`${countryId}: NO es mi turno (yo=${playerId?.slice(-4)} turno=${gameState.currentPlayerId?.slice(-4)})`);
+          return;
+        }
         // Can only place on own territories
-        if (!isMine) return;
+        if (!isMine) {
+          setLastClickDebug(`${countryId}: NO es mio (owner=${territory.owner?.slice(-4)} yo=${playerId?.slice(-4)})`);
+          return;
+        }
+        setLastClickDebug(`${countryId}: COLOCANDO ejercito!`);
         socket.placeArmies(countryId, 1);
         return;
       }
@@ -512,6 +706,16 @@ function App() {
         // -- REINFORCE -------------------------------------------
         case 'REINFORCE': {
           if (!isMine) return;
+
+          // Missile incorporation mode
+          if (missileIncorporating) {
+            if (territory.armies >= 7) {
+              socket.incorporateMissile(countryId);
+              setMissileIncorporating(false);
+            }
+            return;
+          }
+
           if (effectiveReinforcementsLeft <= 0) return;
 
           // Accumulate 1 reinforcement on this territory
@@ -534,6 +738,16 @@ function App() {
 
         // -- ATTACK ----------------------------------------------
         case 'ATTACK': {
+          // Missile firing mode: fire at enemy territory
+          if (missileFiring && missileSource) {
+            if (!isMine) {
+              socket.fireMissile(missileSource, countryId);
+            }
+            setMissileFiring(false);
+            setMissileSource(null);
+            return;
+          }
+
           if (!attackSource) {
             // First click: select attack source
             if (!isMine) return;
@@ -583,6 +797,9 @@ function App() {
 
         // -- REGROUP ---------------------------------------------
         case 'REGROUP': {
+          // If regroup selector is open, ignore map clicks
+          if (regroupPending) return;
+
           if (!regroupSource) {
             // First click: select regroup source
             if (!isMine) return;
@@ -612,10 +829,21 @@ function App() {
               return;
             }
 
-            // Move 1 army from source to destination
-            socket.regroup([{ from: regroupSource, to: countryId, armies: 1 }]);
-            // Keep source selected for continued regrouping
-            selectCountry(regroupSource);
+            const sourceTerritory = gameState.territories[regroupSource];
+            const maxMovable = sourceTerritory ? sourceTerritory.armies - 1 : 1;
+
+            if (maxMovable === 1) {
+              // Only 1 army can move, send immediately (no need for selector)
+              socket.regroup([{ from: regroupSource, to: countryId, armies: 1 }]);
+              selectCountry(regroupSource);
+            } else {
+              // Show regroup selector for choosing quantity
+              setRegroupPending({
+                from: regroupSource,
+                to: countryId,
+                maxArmies: maxMovable,
+              });
+            }
           }
           break;
         }
@@ -632,12 +860,16 @@ function App() {
       playerId,
       isMyTurn,
       conquestPending,
+      regroupPending,
       selectedCountry,
       attackSource,
       regroupSource,
       reinforcePlacements,
       reinforcementsSpent,
       effectiveReinforcementsLeft,
+      missileFiring,
+      missileSource,
+      missileIncorporating,
       selectCountry,
       socket,
     ],
@@ -656,27 +888,54 @@ function App() {
   }, [conquestPending, conquestArmies, socket, selectCountry]);
 
   // ============================================================
+  // REGROUP COMPLETION
+  // ============================================================
+  const handleRegroupConfirm = useCallback(
+    (armies: number) => {
+      if (!regroupPending) return;
+      socket.regroup([{ from: regroupPending.from, to: regroupPending.to, armies }]);
+      // Keep source selected for continued regrouping
+      setRegroupSource(regroupPending.from);
+      selectCountry(regroupPending.from);
+      setRegroupPending(null);
+    },
+    [regroupPending, socket, selectCountry],
+  );
+
+  const handleRegroupCancel = useCallback(() => {
+    setRegroupPending(null);
+    // Keep source selected so user can pick a different destination
+  }, []);
+
+  // ============================================================
   // END TURN
   // ============================================================
   const handleEndTurn = useCallback(() => {
+    // If there are unsent reinforcement placements, send them first
+    if (reinforcementsSpent > 0 && Object.keys(reinforcePlacements).length > 0) {
+      socket.reinforce(reinforcePlacements);
+      setReinforcePlacements({});
+      setReinforcementsSpent(0);
+    }
     socket.endTurn();
     setAttackSource(null);
     setRegroupSource(null);
+    setRegroupPending(null);
     selectCountry(null);
-  }, [socket, selectCountry]);
+  }, [socket, selectCountry, reinforcementsSpent, reinforcePlacements]);
 
   // ============================================================
   // SKIP TO ATTACK (from REINFORCE when all reinforcements placed)
   // ============================================================
   const handleSkipToAttack = useCallback(() => {
-    // If there are unsent reinforcements, send them first
+    // If there are unsent reinforcements, send them first then skip
     if (reinforcementsSpent > 0 && Object.keys(reinforcePlacements).length > 0) {
       socket.reinforce(reinforcePlacements);
       setReinforcePlacements({});
       setReinforcementsSpent(0);
-    } else {
-      socket.skipToAttack();
     }
+    // Always emit skipToAttack to advance the phase on the server
+    socket.skipToAttack();
   }, [reinforcementsSpent, reinforcePlacements, socket]);
 
   // ============================================================
@@ -696,10 +955,26 @@ function App() {
     if (cardIndices.length < 3 || !gameState?.myHand) return;
     const cardIds = cardIndices.map((i) => gameState.myHand[i]?.id).filter(Boolean);
     if (cardIds.length >= 3) {
-      socket.tradeCards(cardIds);
+      const continentIds = selectedContinentCards.size > 0
+        ? Array.from(selectedContinentCards) as ContinentId[]
+        : undefined;
+      socket.tradeCards(cardIds, continentIds);
       useGameStore.getState().clearCardSelection();
+      setSelectedContinentCards(new Set());
     }
-  }, [selectedCards, gameState?.myHand, socket]);
+  }, [selectedCards, selectedContinentCards, gameState?.myHand, socket]);
+
+  const handleToggleContinentCard = useCallback((continentId: ContinentId) => {
+    setSelectedContinentCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(continentId)) {
+        next.delete(continentId);
+      } else {
+        next.add(continentId);
+      }
+      return next;
+    });
+  }, []);
 
   const handleVictoryClose = useCallback(() => {
     setVictoryInfo(null);
@@ -819,10 +1094,12 @@ function App() {
           maxPlayers={roomState.maxPlayers}
           myId={playerId ?? ''}
           isHost={isHost}
+          settings={roomState.settings ?? DEFAULT_ROOM_SETTINGS}
           onSetColor={handleSetColor}
           onToggleReady={handleToggleReady}
           onStartGame={handleStartGame}
           onLeave={handleLeaveRoom}
+          onUpdateSettings={socket.updateSettings}
         />
       </div>
     );
@@ -848,10 +1125,16 @@ function App() {
     } else if (gameState.phase === 'PLAYING' && isMyTurn) {
       switch (gameState.turnPhase) {
         case 'REINFORCE':
-          statusMessage = `Haz clic en tus territorios para colocar refuerzos (${effectiveReinforcementsLeft} restantes)`;
+          if (missileIncorporating) {
+            statusMessage = 'Selecciona un pais propio con 7+ ejercitos para incorporar misil';
+          } else {
+            statusMessage = `Haz clic en tus territorios para colocar refuerzos (${effectiveReinforcementsLeft} restantes)`;
+          }
           break;
         case 'ATTACK':
-          if (conquestPending) {
+          if (missileFiring && missileSource) {
+            statusMessage = `Modo Misil: selecciona un territorio enemigo para disparar desde ${missileSource}`;
+          } else if (conquestPending) {
             statusMessage = `Conquista: selecciona cuantos ejercitos mover a ${conquestPending.to}`;
           } else if (attackSource) {
             statusMessage = `Atacando desde ${attackSource} - selecciona territorio enemigo adyacente`;
@@ -860,11 +1143,22 @@ function App() {
           }
           break;
         case 'REGROUP':
-          if (regroupSource) {
+          if (regroupPending) {
+            statusMessage = `Selecciona cuantos ejercitos mover de ${regroupPending.from} a ${regroupPending.to}`;
+          } else if (regroupSource) {
             statusMessage = `Reagrupando desde ${regroupSource} - selecciona territorio propio adyacente`;
           } else {
             statusMessage = 'Selecciona un territorio propio con 2+ ejercitos para reagrupar';
           }
+          break;
+        case 'TRADE':
+          statusMessage = 'Puedes canjear cartas por ejercitos adicionales';
+          break;
+        case 'DRAW_CARD':
+          statusMessage = 'Robando carta de pais...';
+          break;
+        case 'DRAW_CONTINENT_CARD':
+          statusMessage = 'Verificando cartas de continente...';
           break;
         default:
           break;
@@ -881,7 +1175,41 @@ function App() {
             selectedCountry={selectedCountry}
             highlightedCountries={highlightedCountries}
             phase={isSetupPhase ? 'REINFORCE' : gameState.turnPhase}
+            playerColors={playerColorMap}
+            playerNames={playerNameMap}
+            missileRange={missileRangeData}
+            missileImpact={missileImpact}
+            missileLaunchLine={missileLaunchLine}
           />
+        </div>
+
+        {/* -- DEBUG PANEL (TEMPORARY) -------------------------------- */}
+        <div className="absolute top-2 right-2 z-50 bg-black/90 text-green-400 font-mono text-[10px] p-2 rounded border border-green-800 max-w-[340px] pointer-events-auto">
+          <div className="font-bold text-yellow-400 mb-1">DEBUG — {gameState.players?.find((p: any) => p.id === playerId)?.name ?? '?'}</div>
+          <div>playerId: {playerId?.slice(-8) ?? 'NULL'}</div>
+          <div>phase: {gameState.phase}</div>
+          <div>turnPhase: {gameState.turnPhase}</div>
+          <div>currentPlayer: {gameState.players?.find((p: any) => p.id === gameState.currentPlayerId)?.name ?? '?'} ({gameState.currentPlayerId?.slice(-8) ?? 'NULL'})</div>
+          <div className={isMyTurn ? 'text-green-300 font-bold' : 'text-red-400 font-bold'}>isMyTurn: {String(isMyTurn)}</div>
+          <div>isSetupPhase: {String(isSetupPhase)}</div>
+          <div>reinforcementsLeft: {gameState.reinforcementsLeft ?? 'undef'}</div>
+          <div>conquestPending: {String(!!conquestPending)}</div>
+          <div className="mt-1 border-t border-green-800 pt-1">
+            <div className="text-yellow-400">selected: {selectedCountry ?? 'none'}</div>
+            {selectedCountry && gameState.territories[selectedCountry] && (
+              <>
+                <div>owner: {gameState.territories[selectedCountry].owner?.slice(-8) ?? 'NULL'}</div>
+                <div>armies: {gameState.territories[selectedCountry].armies}</div>
+                <div>isMine: {String(gameState.territories[selectedCountry].owner === playerId)}</div>
+              </>
+            )}
+          </div>
+          <div className="mt-1 border-t border-green-800 pt-1 text-gray-500">
+            players: {gameState.players?.map((p: any) => `${p.name}(${p.id?.slice(-4)})`).join(', ')}
+          </div>
+          <div className="mt-1 border-t border-amber-800 pt-1 text-amber-300 font-bold">
+            ultimo click: {lastClickDebug}
+          </div>
         </div>
 
         {/* -- Setup phase banner (shown instead of TurnControls during SETUP) -- */}
@@ -895,6 +1223,11 @@ function App() {
                   </span>
                   <h3 className="text-sm font-bold text-white">
                     Colocar {setupArmiesCount} Ejercitos
+                    {isMyTurn && gameState.reinforcementsLeft != null && (
+                      <span className="ml-2 text-amber-300 font-normal">
+                        ({gameState.reinforcementsLeft} restantes)
+                      </span>
+                    )}
                   </h3>
                 </div>
                 {isMyTurn ? (
@@ -903,7 +1236,7 @@ function App() {
                   </span>
                 ) : (
                   <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">
-                    Esperando turno...
+                    Turno de {gameState.players?.find((p: any) => p.id === gameState.currentPlayerId)?.name ?? 'otro jugador'}...
                   </span>
                 )}
               </div>
@@ -924,6 +1257,10 @@ function App() {
             onEndTurn={handleEndTurn}
             onSkipToAttack={handleSkipToAttack}
             onSkipToRegroup={handleSkipToRegroup}
+            onIncorporateMissile={() => setMissileIncorporating(true)}
+            onCancelMissileMode={() => setMissileIncorporating(false)}
+            missileIncorporating={missileIncorporating}
+            canIncorporateMissile={canIncorporateMissile}
             activeSituationCard={
               gameState.activeSituationCard
                 ? {
@@ -944,6 +1281,45 @@ function App() {
             </div>
           </div>
         )}
+
+        {/* -- Missile fire button ---------------------------------- */}
+        {isMyTurn &&
+          gameState.phase === 'PLAYING' &&
+          gameState.turnPhase === 'ATTACK' &&
+          !conquestPending &&
+          attackSource &&
+          gameState.territories[attackSource]?.missiles != null &&
+          gameState.territories[attackSource].missiles! > 0 &&
+          !missileFiring && (
+          <div className="absolute bottom-52 left-1/2 -translate-x-1/2 z-30">
+            <button
+              onClick={() => {
+                setMissileFiring(true);
+                setMissileSource(attackSource);
+              }}
+              className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white font-semibold rounded-lg border border-red-500 shadow-lg transition-colors text-sm"
+            >
+              Lanzar Misil ({gameState.territories[attackSource].missiles})
+            </button>
+          </div>
+        )}
+
+        {/* -- Missile cancel button -------------------------------- */}
+        {missileFiring && (
+          <div className="absolute bottom-52 left-1/2 -translate-x-1/2 z-30">
+            <button
+              onClick={() => {
+                setMissileFiring(false);
+                setMissileSource(null);
+              }}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 font-semibold rounded-lg border border-gray-500 shadow-lg transition-colors text-sm"
+            >
+              Cancelar Misil
+            </button>
+          </div>
+        )}
+
+        {/* -- Missile incorporation is now handled via TurnControls during REINFORCE phase -- */}
 
         {/* -- Conquest modal --------------------------------------- */}
         {conquestPending && (
@@ -988,6 +1364,17 @@ function App() {
               </button>
             </div>
           </div>
+        )}
+
+        {/* -- Regroup selector ------------------------------------- */}
+        {regroupPending && (
+          <RegroupSelector
+            from={regroupPending.from}
+            to={regroupPending.to}
+            maxArmies={regroupPending.maxArmies}
+            onConfirm={handleRegroupConfirm}
+            onCancel={handleRegroupCancel}
+          />
         )}
 
         {/* -- Player panel (top-left, overlaid) -------------------- */}
@@ -1047,8 +1434,84 @@ function App() {
           })}
         </div>
 
-        {/* -- Game log (top-right, overlaid) ----------------------- */}
-        <GameLog events={gameLog} />
+        {/* -- Pact toggle button (below player panel) --------------- */}
+        <div className="absolute left-2 z-20" style={{ top: `${(gameState.players.length * 48) + 56}px` }}>
+          <button
+            onClick={() => setShowActivePacts((prev) => !prev)}
+            className={`px-3 py-1.5 bg-gray-800/90 backdrop-blur-sm border rounded-lg text-xs transition-colors flex items-center gap-1.5 ${
+              showActivePacts
+                ? 'border-cyan-600 text-cyan-400'
+                : 'border-gray-700 hover:border-cyan-600 text-gray-300 hover:text-cyan-400'
+            }`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Pactos ({gameState.pacts.filter((p) => p.active).length})
+          </button>
+
+          {showActivePacts && (
+            <div className="mt-1">
+              <PactPanel
+                pacts={gameState.pacts}
+                players={gameState.players}
+                currentPlayerId={playerId}
+                onBreakPact={(pactId) => socket.breakPact(pactId)}
+                onProposePact={() => {
+                  setShowActivePacts(false);
+                  setShowPactProposal(true);
+                }}
+                onClose={() => setShowActivePacts(false)}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* -- Pact player selection overlay ------------------------ */}
+        {showPactProposal && !pactTargetPlayer && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowPactProposal(false)}>
+            <div
+              className="bg-gray-800 rounded-xl p-5 max-w-xs w-full mx-4 shadow-2xl border border-gray-600"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-bold text-white mb-3">Elegir jugador</h3>
+              <div className="space-y-2">
+                {gameState.players
+                  .filter((p) => p.id !== playerId && !p.eliminated)
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => setPactTargetPlayer(p.id)}
+                      className="w-full text-left px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-100 text-sm transition-colors flex items-center gap-2"
+                    >
+                      <span
+                        className="w-3 h-3 rounded-full shrink-0 border border-gray-500"
+                        style={{
+                          backgroundColor:
+                            p.color === 'WHITE' ? '#F7FAFC' :
+                            p.color === 'BLACK' ? '#2D3748' :
+                            p.color === 'RED' ? '#E53E3E' :
+                            p.color === 'BLUE' ? '#3182CE' :
+                            p.color === 'YELLOW' ? '#ECC94B' :
+                            p.color === 'GREEN' ? '#38A169' : '#888888',
+                        }}
+                      />
+                      {p.name}
+                    </button>
+                  ))}
+              </div>
+              <button
+                onClick={() => setShowPactProposal(false)}
+                className="mt-4 w-full px-3 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* -- Game log + chat (top-right, overlaid) ---------------- */}
+        <GameLog events={gameLog} onSendChat={socket.sendChat} />
 
         {/* -- Card hand (bottom, overlaid) ------------------------- */}
         <CardHand
@@ -1058,6 +1521,32 @@ function App() {
           onTrade={handleTradeCards}
           canTrade={actions.canTrade}
         />
+
+        {/* -- Continent cards panel (above card hand) -------------- */}
+        {showContinentCards && (
+          <div className="absolute bottom-48 left-1/2 -translate-x-1/2 z-25">
+            <ContinentCardPanel
+              continentCards={gameState.continentCards}
+              playerId={playerId}
+              canUse={actions.canTrade}
+              onUseContinentCard={handleToggleContinentCard}
+              selectedContinentCards={selectedContinentCards}
+            />
+          </div>
+        )}
+
+        {/* -- Continent cards toggle button (bottom-left, above cards) */}
+        <button
+          onClick={() => setShowContinentCards((prev) => !prev)}
+          className={`absolute bottom-48 left-4 z-30 px-3 py-2 bg-gray-800/90 backdrop-blur-sm border rounded-lg text-xs transition-colors ${
+            showContinentCards
+              ? 'border-purple-500 text-purple-300 hover:border-purple-400'
+              : 'border-gray-700 text-gray-300 hover:border-purple-600 hover:text-purple-400'
+          }`}
+          title="Cartas de continente"
+        >
+          Continentes{selectedContinentCards.size > 0 ? ` (${selectedContinentCards.size})` : ''}
+        </button>
 
         {/* -- Objective button (bottom-right, above cards) --------- */}
         {gameState.myObjective && (
@@ -1105,6 +1594,27 @@ function App() {
             onClose={() => setShowSituationCard(false)}
           />
         )}
+
+        {/* Pact proposal modal */}
+        {showPactProposal && pactTargetPlayer && (() => {
+          const targetPlayer = gameState.players.find((p) => p.id === pactTargetPlayer);
+          if (!targetPlayer) return null;
+          return (
+            <PactProposalModal
+              targetPlayerName={targetPlayer.name}
+              targetPlayerId={pactTargetPlayer}
+              onPropose={(type, details) => {
+                socket.proposePact(pactTargetPlayer, type, details);
+                setPactTargetPlayer(null);
+                setShowPactProposal(false);
+              }}
+              onClose={() => {
+                setPactTargetPlayer(null);
+                setShowPactProposal(false);
+              }}
+            />
+          );
+        })()}
 
         {/* Pact response modal */}
         {pendingPact && (

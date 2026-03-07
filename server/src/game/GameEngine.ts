@@ -28,7 +28,7 @@ import type { PactType, PactDetails } from '@shared/types/Pacts';
 // Types
 // ---------------------------------------------------------------------------
 
-type GamePhase = 'LOBBY' | 'SETUP_DISTRIBUTE' | 'SETUP_PLACE_8' | 'SETUP_PLACE_4' | 'PLAYING' | 'FINISHED';
+type GamePhase = 'LOBBY' | 'SETUP_DISTRIBUTE' | 'SETUP_PLACE_18' | 'SETUP_PLACE_8' | 'SETUP_PLACE_4' | 'PLAYING' | 'FINISHED';
 
 interface GameConfig {
   playerIds: string[];
@@ -48,7 +48,7 @@ interface PlayerData {
   name: string;
   color: string;
   hand: CountryCard[];
-  objective: Objective;
+  objectives: Objective[];
   tradeCount: number;
   eliminated: boolean;
   eliminatedBy?: string;
@@ -98,7 +98,7 @@ interface FullGameState {
     color: string;
     handCount: number;
     hand: CountryCard[];
-    objective: Objective;
+    objectives: Objective[];
     tradeCount: number;
     eliminated: boolean;
     eliminatedBy?: string;
@@ -125,7 +125,7 @@ interface SanitizedGameState {
     color: string;
     handCount: number;
     hand?: CountryCard[];
-    objective?: Objective;
+    objectives?: Objective[];
     tradeCount: number;
     eliminated: boolean;
     eliminatedBy?: string;
@@ -246,12 +246,26 @@ export class GameEngine {
     this.territoryManager = new TerritoryManager(territories);
 
     // -- Assign objectives (20 total, shuffled) ------------------------------
-    const shuffledObjectives = this.shuffleArray([...OBJECTIVES]);
+    // For 2-3 player games, filter out destruction objectives and the 35-countries objective
+    const playerCount = config.playerIds.length;
+    let availableObjectives = [...OBJECTIVES];
+    if (playerCount <= 3) {
+      availableObjectives = availableObjectives.filter(obj => {
+        if (obj.type === 'DESTRUCTION' || obj.type === 'DESTROY_LEFT') return false;
+        if (obj.type === 'OCCUPATION' && obj.id === 'OBJ_12') return false; // 35 countries objective
+        return true;
+      });
+    }
+    const shuffledObjectives = this.shuffleArray(availableObjectives);
+
+    // For 2 players: assign 2 objectives each; for 3+: assign 1
+    const objectivesPerPlayer = playerCount === 2 ? 2 : 1;
     const assignedObjectives = this.assignObjectives(
       shuffledObjectives,
       config.playerIds,
       config.playerColors,
       turnOrder,
+      objectivesPerPlayer,
     );
 
     // -- Create player data --------------------------------------------------
@@ -262,7 +276,7 @@ export class GameEngine {
         name: config.playerNames[pid] ?? pid,
         color: config.playerColors[pid] ?? 'WHITE',
         hand: [],
-        objective: assignedObjectives.get(pid)!,
+        objectives: assignedObjectives.get(pid)!,
         tradeCount: 0,
         eliminated: false,
       });
@@ -290,7 +304,8 @@ export class GameEngine {
     this.objectiveChecker = new ObjectiveChecker();
 
     // -- Set phase -----------------------------------------------------------
-    this.phase = 'SETUP_PLACE_8';
+    // 2 players: single setup phase of 18 armies; 3+: standard 8+4 setup
+    this.phase = playerCount === 2 ? 'SETUP_PLACE_18' : 'SETUP_PLACE_8';
     this.conqueredThisTurn = 0;
     this.canDrawCardThisTurn = false;
     this.crisisLosers = new Set();
@@ -617,6 +632,15 @@ export class GameEngine {
     if (!attacker || !defender) return { success: false, error: 'Invalid countries' };
     if (attacker.owner === defender.owner) return { success: false, error: 'Cannot attack own country' };
 
+    // -- Condominium checks --------------------------------------------------
+    // Cannot attack a condominium you co-own
+    if (this.enablePacts && this.pactSystem.isCondominium(defenderCountry)) {
+      const owners = this.pactSystem.getCondominiumOwners(defenderCountry);
+      if (owners && (owners[0] === attacker.owner || owners[1] === attacker.owner)) {
+        return { success: false, error: 'Cannot attack a condominium you co-own' };
+      }
+    }
+
     // -- DESCANSO check ------------------------------------------------------
     const attackerPlayer = this.players.get(attacker.owner);
     if (attackerPlayer && this.situationManager.isPlayerInDescanso(attackerPlayer.color)) {
@@ -651,8 +675,18 @@ export class GameEngine {
       }
     }
 
+    // -- Determine effective armies for combat --------------------------------
+    // When attacking FROM a condominium, only use the current player's armies
+    let effectiveAttackerArmies = attacker.armies;
+    if (this.enablePacts && this.pactSystem.isCondominium(attackerCountry)) {
+      const condo = this.pactSystem.getCondominium(attackerCountry);
+      if (condo) {
+        effectiveAttackerArmies = condo.armies[attacker.owner] ?? attacker.armies;
+      }
+    }
+
     // -- Army check ----------------------------------------------------------
-    if (!this.combat.canAttack(attacker.armies)) {
+    if (!this.combat.canAttack(effectiveAttackerArmies)) {
       return { success: false, error: 'Need at least 2 armies to attack' };
     }
 
@@ -663,7 +697,7 @@ export class GameEngine {
 
     // -- Execute combat ------------------------------------------------------
     const config = {
-      attackerArmies: attacker.armies,
+      attackerArmies: effectiveAttackerArmies,
       defenderArmies: defender.armies,
       attackerMissiles: attacker.missiles,
       defenderMissiles: defender.missiles,
@@ -709,6 +743,13 @@ export class GameEngine {
     if (!this.combat.validateConquestMove(armies, fromTerritory.armies)) return false;
 
     const previousOwner = toTerritory.owner;
+
+    // If the conquered territory was a condominium, remove it from PactSystem
+    if (this.enablePacts && this.pactSystem.isCondominium(toCountry)) {
+      this.pactSystem.removeCondominium(toCountry);
+      this.addLog('PACT', `Condominium on ${toCountry} dissolved by conquest`);
+    }
+
     this.territoryManager.conquer(toCountry, fromTerritory.owner, armies);
     this.territoryManager.removeArmies(fromCountry, armies);
 
@@ -855,6 +896,12 @@ export class GameEngine {
 
   /**
    * Check if a specific player has won.
+   *
+   * Special rules by player count:
+   *   - 2 players: player must complete ALL objectives (2) to win
+   *   - 3 players: player must complete objective AND hold 10+ extra countries
+   *               beyond what the objective requires
+   *   - 4+ players: standard rules (single objective OR 45 countries)
    */
   checkVictory(playerId: string): VictoryResult {
     const player = this.players.get(playerId);
@@ -863,38 +910,88 @@ export class GameEngine {
     const playerCountries = this.territoryManager.getPlayerCountries(playerId);
     const countriesData = COUNTRIES.map(c => ({ id: c.id, continent: c.continent, isIsland: c.isIsland }));
     const eliminatedPlayers = this.getEliminatedPlayers();
+    const totalPlayers = this.players.size;
 
-    // Resolve destruction target if needed
+    // Common victory check (45+ countries wins regardless for all modes)
+    if (this.objectiveChecker.checkCommonVictory(playerCountries.length)) {
+      return { won: true, method: 'COMMON_45', playerId };
+    }
+
+    // --- 2 players: must complete ALL objectives ---
+    if (totalPlayers === 2) {
+      const allMet = player.objectives.every(obj => {
+        const result = this.checkSingleObjective(obj, player, playerCountries, countriesData, eliminatedPlayers, playerId);
+        return result.won;
+      });
+      if (allMet) {
+        return { won: true, method: 'OBJECTIVE', playerId };
+      }
+      return { won: false, method: '' };
+    }
+
+    // --- 3 players: must complete objective + 10 extra countries ---
+    if (totalPlayers === 3) {
+      const obj = player.objectives[0];
+      if (!obj) return { won: false, method: '' };
+      const objResult = this.checkSingleObjective(obj, player, playerCountries, countriesData, eliminatedPlayers, playerId);
+      if (objResult.won) {
+        // Calculate how many countries the objective requires
+        const requiredCountries = this.objectiveChecker.countRequiredCountries(obj, countriesData);
+        const extraCountries = playerCountries.length - requiredCountries;
+        if (extraCountries >= 10) {
+          return { won: true, method: 'OBJECTIVE', playerId };
+        }
+      }
+      return { won: false, method: '' };
+    }
+
+    // --- 4+ players: standard single objective ---
+    const obj = player.objectives[0];
+    if (!obj) return { won: false, method: '' };
+
+    const result = this.checkSingleObjective(obj, player, playerCountries, countriesData, eliminatedPlayers, playerId);
+    if (result.won) {
+      return { won: true, method: result.method, playerId };
+    }
+
+    return { won: false, method: '' };
+  }
+
+  /**
+   * Check a single objective for a player (helper for checkVictory).
+   */
+  private checkSingleObjective(
+    objective: Objective,
+    player: PlayerData,
+    playerCountries: string[],
+    countriesData: { id: string; continent: string; isIsland: boolean }[],
+    eliminatedPlayers: { id: string; eliminatedBy: string | null }[],
+    playerId: string,
+  ): { won: boolean; method: string } {
     let resolvedTargetId: string | null = null;
-    if (player.objective.type === 'DESTRUCTION') {
+    if (objective.type === 'DESTRUCTION') {
       const allPlayersInfo = this.getAllPlayersInfo();
       const playerIndex = allPlayersInfo.findIndex(p => p.id === playerId);
       resolvedTargetId = this.objectiveChecker.resolveDestructionTarget(
-        player.objective.targetColor,
+        objective.targetColor,
         player.color,
         allPlayersInfo,
         playerIndex,
       );
-    } else if (player.objective.type === 'DESTROY_LEFT') {
+    } else if (objective.type === 'DESTROY_LEFT') {
       const allPlayersInfo = this.getAllPlayersInfo();
       const playerIndex = allPlayersInfo.findIndex(p => p.id === playerId);
       resolvedTargetId = this.objectiveChecker.resolveDestroyLeftTarget(allPlayersInfo, playerIndex);
     }
 
-    const result = this.objectiveChecker.checkVictory(
-      player.objective,
+    return this.objectiveChecker.checkVictory(
+      objective,
       playerCountries,
       countriesData,
       eliminatedPlayers,
       playerId,
       resolvedTargetId,
     );
-
-    if (result.won) {
-      return { won: true, method: result.method, playerId };
-    }
-
-    return { won: false, method: '' };
   }
 
   /**
@@ -951,6 +1048,111 @@ export class GameEngine {
   }
 
   // =========================================================================
+  // Condominiums & International Zones
+  // =========================================================================
+
+  /**
+   * Create a condominium on a conquered territory.
+   * Sets the territory's co-owner fields so the client can render both colors.
+   */
+  createCondominium(
+    countryId: string,
+    player1: string,
+    player2: string,
+    totalArmies: number,
+  ): void {
+    this.pactSystem.createCondominium(countryId, player1, player2, totalArmies);
+
+    // Mirror the condominium into TerritoryManager so territories carry co-owner info
+    const condo = this.pactSystem.getCondominium(countryId);
+    if (condo) {
+      const territory = this.territoryManager.getTerritory(countryId);
+      if (territory) {
+        territory.owner = player1;
+        territory.armies = condo.armies[player1] ?? 0;
+        territory.coOwner = player2;
+        territory.coOwnerArmies = condo.armies[player2] ?? 0;
+        territory.coOwnerMissiles = 0;
+      }
+    }
+
+    this.addLog('PACT', `Condominium created on ${countryId} between ${player1} and ${player2}`);
+  }
+
+  /**
+   * Create an international zone — a neutral territory that cannot be attacked.
+   */
+  createInternationalZone(
+    countryId: string,
+    player1: string,
+    player2: string,
+  ): void {
+    this.pactSystem.createInternationalZone(countryId);
+
+    // Set territory to 1 army, owned nominally by the original owner (it is protected)
+    const territory = this.territoryManager.getTerritory(countryId);
+    if (territory) {
+      territory.armies = 1;
+    }
+
+    this.addLog('PACT', `International zone created on ${countryId} between ${player1} and ${player2}`);
+  }
+
+  /**
+   * Execute an attack as an ally during an aggression pact.
+   * The ally is not the current turn player but has permission to attack the target.
+   */
+  executeAllyAttack(
+    allyId: string,
+    attackerCountry: string,
+    targetCountry: string,
+    adjacency: Record<string, string[]>,
+    diceCount?: number,
+    situationEffect?: 'NONE' | 'NIEVE' | 'VIENTO_A_FAVOR',
+  ): { success: boolean; result?: CombatResult; error?: string } {
+    // Adjacency check
+    const adj = adjacency[attackerCountry];
+    if (!adj || !adj.includes(targetCountry)) {
+      return { success: false, error: 'Countries are not adjacent' };
+    }
+
+    const attacker = this.territoryManager.getTerritory(attackerCountry);
+    const defender = this.territoryManager.getTerritory(targetCountry);
+    if (!attacker || !defender) return { success: false, error: 'Invalid countries' };
+    if (attacker.owner !== allyId) return { success: false, error: 'You do not own the attacking country' };
+
+    // Army check
+    if (!this.combat.canAttack(attacker.armies)) {
+      return { success: false, error: 'Need at least 2 armies to attack' };
+    }
+
+    const effect = situationEffect ?? 'NONE';
+
+    const config = {
+      attackerArmies: attacker.armies,
+      defenderArmies: defender.armies,
+      attackerMissiles: attacker.missiles,
+      defenderMissiles: defender.missiles,
+      situationEffect: effect,
+    };
+
+    const result = this.combat.executeCombat(config, diceCount);
+    this.territoryManager.removeArmies(attackerCountry, result.attackerLosses);
+    this.territoryManager.removeArmies(targetCountry, result.defenderLosses);
+
+    this.addLog(
+      'COMBAT',
+      `ALLY ATTACK: ${attackerCountry} attacks ${targetCountry}: att -${result.attackerLosses}, def -${result.defenderLosses}${result.conquered ? ' CONQUERED' : ''}`,
+    );
+
+    if (result.conquered) {
+      this.conqueredThisTurn++;
+    }
+
+    return { success: true, result };
+  }
+
+  // =========================================================================
   // Player Elimination
   // =========================================================================
 
@@ -1002,7 +1204,7 @@ export class GameEngine {
         color: player.color,
         handCount: player.hand.length,
         hand: [...player.hand],
-        objective: player.objective,
+        objectives: [...player.objectives],
         tradeCount: player.tradeCount,
         eliminated: player.eliminated,
         eliminatedBy: player.eliminatedBy,
@@ -1044,7 +1246,7 @@ export class GameEngine {
         color: player.color,
         handCount: player.hand.length,
         hand: isMe ? [...player.hand] : undefined,
-        objective: isMe ? player.objective : undefined,
+        objectives: isMe ? [...player.objectives] : undefined,
         tradeCount: player.tradeCount,
         eliminated: player.eliminated,
         eliminatedBy: player.eliminatedBy,
@@ -1143,36 +1345,42 @@ export class GameEngine {
     playerIds: string[],
     playerColors: Record<string, string>,
     turnOrder: string[],
-  ): Map<string, Objective> {
-    const assignments = new Map<string, Objective>();
+    objectivesPerPlayer: number = 1,
+  ): Map<string, Objective[]> {
+    const assignments = new Map<string, Objective[]>();
     const available = [...shuffledObjectives];
 
     for (const pid of playerIds) {
       const playerColor = playerColors[pid] ?? 'WHITE';
+      const playerObjectives: Objective[] = [];
 
-      let assignedIdx = -1;
-      for (let i = 0; i < available.length; i++) {
-        const obj = available[i];
+      for (let n = 0; n < objectivesPerPlayer; n++) {
+        let assignedIdx = -1;
+        for (let i = 0; i < available.length; i++) {
+          const obj = available[i];
 
-        // Rule: a DESTRUCTION objective cannot target the player's own color.
-        // The player would get the fallback (player to the right), but we
-        // prefer to assign a different objective entirely.
-        if (obj.type === 'DESTRUCTION' && obj.targetColor === playerColor) {
-          continue;
+          // Rule: a DESTRUCTION objective cannot target the player's own color.
+          // The player would get the fallback (player to the right), but we
+          // prefer to assign a different objective entirely.
+          if (obj.type === 'DESTRUCTION' && obj.targetColor === playerColor) {
+            continue;
+          }
+
+          assignedIdx = i;
+          break;
         }
 
-        assignedIdx = i;
-        break;
+        if (assignedIdx === -1) {
+          // Fallback: if all remaining objectives conflict (very unlikely with
+          // 20 objectives and <=6 players), just assign the first one anyway.
+          assignedIdx = 0;
+        }
+
+        playerObjectives.push(available[assignedIdx]);
+        available.splice(assignedIdx, 1);
       }
 
-      if (assignedIdx === -1) {
-        // Fallback: if all remaining objectives conflict (very unlikely with
-        // 20 objectives and <=6 players), just assign the first one anyway.
-        assignedIdx = 0;
-      }
-
-      assignments.set(pid, available[assignedIdx]);
-      available.splice(assignedIdx, 1);
+      assignments.set(pid, playerObjectives);
     }
 
     return assignments;
@@ -1205,7 +1413,7 @@ export class GameEngine {
         id: player.id,
         color: player.color,
         eliminated: player.eliminated || undefined,
-        objective: player.objective,
+        objective: player.objectives[0],
         countries: this.territoryManager.getPlayerCountries(player.id),
       });
     }

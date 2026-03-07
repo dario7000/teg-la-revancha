@@ -4,7 +4,7 @@ export type ContinentId = 'AMERICA_DEL_NORTE' | 'AMERICA_CENTRAL' | 'AMERICA_DEL
 export type CardId = string;
 export type PlayerColor = 'WHITE' | 'BLACK' | 'RED' | 'BLUE' | 'YELLOW' | 'GREEN';
 
-export type GamePhase = 'LOBBY' | 'SETUP_DISTRIBUTE' | 'SETUP_PLACE_8' | 'SETUP_PLACE_4' | 'PLAYING' | 'FINISHED';
+export type GamePhase = 'LOBBY' | 'SETUP_DISTRIBUTE' | 'SETUP_PLACE_18' | 'SETUP_PLACE_8' | 'SETUP_PLACE_4' | 'PLAYING' | 'FINISHED';
 export type TurnPhase = 'SITUATION_CARD' | 'REINFORCE' | 'TRADE' | 'ATTACK' | 'REGROUP' | 'DRAW_CARD' | 'DRAW_CONTINENT_CARD';
 
 export interface TerritoryState {
