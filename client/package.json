@@ -5,14 +5,16 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "start": "serve dist -s -l $PORT"
   },
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "zustand": "^4.5.0",
     "socket.io-client": "^4.7.0",
-    "framer-motion": "^11.0.0"
+    "framer-motion": "^11.0.0",
+    "serve": "^14.2.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",
