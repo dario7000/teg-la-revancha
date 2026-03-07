@@ -5,10 +5,11 @@ import cors from 'cors';
 import { RoomManager } from './network/RoomManager';
 import { EventRouter } from './network/EventRouter';
 
+const clientUrl = process.env.CLIENT_URL?.replace(/\/+$/, '');
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
-  process.env.CLIENT_URL,
+  clientUrl,
 ].filter(Boolean) as string[];
 
 const app = express();

@@ -7,7 +7,7 @@ import type { CountryId, PlayerColor, ContinentId } from '../shared/types/GameSt
 import type { DiceResult, LogEntry, RoomSettings } from '../store/gameStore';
 import { DEFAULT_ROOM_SETTINGS } from '../store/gameStore';
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+const SERVER_URL = (import.meta.env.VITE_SERVER_URL || 'http://localhost:3001').replace(/\/+$/, '');
 
 /**
  * Custom hook that manages a singleton Socket.io connection to the game
