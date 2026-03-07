@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { PactSystem } from '../PactSystem';
-import type { PactDetails, PactType, Pact, Condominium } from '@shared/types/Pacts';
+import type { PactDetails, PactType, Pact, Condominium } from '../../shared/types/Pacts';
 
 // ---------------------------------------------------------------------------
 // Helpers

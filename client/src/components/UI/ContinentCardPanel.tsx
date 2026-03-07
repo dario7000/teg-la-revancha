@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
-import type { ContinentCardState } from '@shared/types/Cards';
-import type { ContinentId } from '@shared/types/GameState';
+import type { ContinentCardState } from '../../shared/types/Cards';
+import type { ContinentId } from '../../shared/types/GameState';
 
 export interface ContinentCardPanelProps {
   /** All continent card states from the game */

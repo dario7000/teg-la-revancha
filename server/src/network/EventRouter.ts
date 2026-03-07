@@ -12,8 +12,8 @@ import { COUNTRY_CARDS } from '../data/countryCards';
 import { SITUATION_CARDS } from '../data/situationCards';
 import type { PlayerColor } from '../data/objectives';
 import type { CountryId } from '../data/countries';
-import type { RegroupAction } from '@shared/types/Actions';
-import type { PactType, PactDetails } from '@shared/types/Pacts';
+import type { RegroupAction } from '../shared/types/Actions';
+import type { PactType, PactDetails } from '../shared/types/Pacts';
 
 /** Precomputed continent -> country-id[] map, used for reinforcement calculation. */
 const CONTINENT_COUNTRIES: Record<string, string[]> = {};

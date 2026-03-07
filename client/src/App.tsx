@@ -28,7 +28,7 @@ import {
 } from './components/Modals';
 import { PactResponseModal } from './components/Modals';
 import PactProposalModal from './components/Modals/PactModal';
-import type { PlayerColor, ContinentId } from '@shared/types/GameState';
+import type { PlayerColor, ContinentId } from './shared/types/GameState';
 
 // ============================================================
 // Client-side adjacency map (mirrors server/src/data/adjacency.ts)

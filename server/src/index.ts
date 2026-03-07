@@ -59,6 +59,6 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', rooms: roomManager.serializeRoomList().length });
 });
 
-httpServer.listen(PORT, () => {
+httpServer.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`TEG Server running on port ${PORT}`);
 });

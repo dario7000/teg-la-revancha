@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { CountryCard, CardSymbol } from '@shared/types/Cards';
+import { CountryCard, CardSymbol } from '../../shared/types/Cards';
 import { getCountryDisplayName } from '../../utils/colors';
 
 export interface CardHandProps {

@@ -7,11 +7,11 @@ import type {
   CountryId,
   PlayerId,
   PlayerColor,
-} from '@shared/types/GameState';
-import type { CountryCard, SituationCard, ContinentCardState } from '@shared/types/Cards';
-import type { Pact } from '@shared/types/Pacts';
-import type { Objective } from '@shared/types/Actions';
-import type { ContinentId } from '@shared/types/GameState';
+} from '../shared/types/GameState';
+import type { CountryCard, SituationCard, ContinentCardState } from '../shared/types/Cards';
+import type { Pact } from '../shared/types/Pacts';
+import type { Objective } from '../shared/types/Actions';
+import type { ContinentId } from '../shared/types/GameState';
 
 // ── Room types ──────────────────────────────────────────────────────────────
 

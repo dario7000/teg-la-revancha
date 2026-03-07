@@ -1,9 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useGameStore } from '../store/gameStore';
-import type { ClientEvents, ServerEvents } from '@shared/types/Events';
-import type { CombatResult } from '@shared/types/Actions';
-import type { CountryId, PlayerColor, ContinentId } from '@shared/types/GameState';
+import type { ClientEvents, ServerEvents } from '../shared/types/Events';
+import type { CombatResult } from '../shared/types/Actions';
+import type { CountryId, PlayerColor, ContinentId } from '../shared/types/GameState';
 import type { DiceResult, LogEntry, RoomSettings } from '../store/gameStore';
 import { DEFAULT_ROOM_SETTINGS } from '../store/gameStore';
 

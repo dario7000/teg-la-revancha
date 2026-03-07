@@ -1,7 +1,7 @@
 import React from 'react';
-import { Player } from '@shared/types/Player';
-import { PlayerId, TerritoryState, CountryId } from '@shared/types/GameState';
-import { PLAYER_COLORS } from '@shared/constants';
+import { Player } from '../../shared/types/Player';
+import { PlayerId, TerritoryState, CountryId } from '../../shared/types/GameState';
+import { PLAYER_COLORS } from '../../shared/constants';
 
 export interface PlayerPanelProps {
   players: Player[];

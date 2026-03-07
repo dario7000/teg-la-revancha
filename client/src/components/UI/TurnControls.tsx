@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TurnPhase } from '@shared/types/GameState';
+import { TurnPhase } from '../../shared/types/GameState';
 
 export interface TurnControlsProps {
   currentPhase: TurnPhase;

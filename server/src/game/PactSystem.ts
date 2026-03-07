@@ -4,8 +4,8 @@ import {
   PactDetails,
   Condominium,
   InternationalZone,
-} from '@shared/types/Pacts';
-import { PlayerId, CountryId } from '@shared/types/GameState';
+} from '../shared/types/Pacts';
+import { PlayerId, CountryId } from '../shared/types/GameState';
 
 export class PactSystem {
   private pacts: Map<string, Pact>;

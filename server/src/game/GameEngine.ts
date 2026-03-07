@@ -22,7 +22,7 @@ import { ADJACENCY } from '../data/adjacency';
 import { SITUATION_CARDS } from '../data/situationCards';
 import { OBJECTIVES } from '../data/objectives';
 import type { Objective, PlayerColor } from '../data/objectives';
-import type { PactType, PactDetails } from '@shared/types/Pacts';
+import type { PactType, PactDetails } from '../shared/types/Pacts';
 
 // ---------------------------------------------------------------------------
 // Types

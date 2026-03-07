@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import type { Pact, PactType } from '@shared/types/Pacts';
+import type { Pact, PactType } from '../../shared/types/Pacts';
 import type { PublicPlayerInfo } from '../../store/gameStore';
 import { PLAYER_COLORS } from '../../utils/colors';
 import { getCountryDisplayName, CONTINENT_DISPLAY_NAMES } from '../../utils/colors';
