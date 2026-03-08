@@ -7,6 +7,7 @@ export { default as RegroupSelector } from './RegroupSelector';
 export { default as PactPanel } from './PactPanel';
 export { default as ContinentCardPanel } from './ContinentCardPanel';
 export { default as ChatInput } from './ChatInput';
+export { default as VoiceChat } from './VoiceChat';
 
 export type { PlayerPanelProps } from './PlayerPanel';
 export type { DiceRollerProps } from './DiceRoller';

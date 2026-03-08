@@ -1,5 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import { RoomManager, Room } from './RoomManager';
+import { DailyService } from './DailyService';
 import { GameEngine } from '../game/GameEngine';
 import { CardManager } from '../game/CardManager';
 import { MissileSystem } from '../game/MissileSystem';
@@ -31,10 +32,12 @@ for (const country of COUNTRIES) {
 export class EventRouter {
   private io: Server;
   private roomManager: RoomManager;
+  private dailyService: DailyService;
 
   constructor(io: Server, roomManager: RoomManager) {
     this.io = io;
     this.roomManager = roomManager;
+    this.dailyService = new DailyService();
 
     // When a player's reconnect window expires the RoomManager tells us
     // so we can broadcast the update.
@@ -126,6 +129,16 @@ export class EventRouter {
         socket.join(room.id);
         socket.emit('room:joined', this.roomManager.serializeRoom(room));
         this.broadcastRoomState(room.id);
+
+        // Create voice chat room (non-blocking)
+        if (this.dailyService.isEnabled) {
+          this.dailyService.createRoom(room.id).then((url) => {
+            if (url) {
+              room.dailyRoomUrl = url;
+              socket.emit('voice:roomReady' as any, url);
+            }
+          });
+        }
       },
     );
   }
@@ -141,6 +154,11 @@ export class EventRouter {
       socket.join(room.id);
       socket.emit('room:joined', this.roomManager.serializeRoom(room));
       this.broadcastRoomState(room.id);
+
+      // Send voice chat URL if available
+      if (room.dailyRoomUrl) {
+        socket.emit('voice:roomReady' as any, room.dailyRoomUrl);
+      }
     });
   }
 
@@ -258,6 +276,11 @@ export class EventRouter {
       // Send the full game state to the reconnected player
       if (result.room.status === 'PLAYING') {
         this.sendGameStateToSocket(result.room, result.playerId, socket);
+      }
+
+      // Send voice chat URL on reconnection
+      if (result.room.dailyRoomUrl) {
+        socket.emit('voice:roomReady' as any, result.room.dailyRoomUrl);
       }
     });
   }

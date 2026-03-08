@@ -53,6 +53,8 @@ export interface Room {
   };
   /** Remaining reinforcements for the current player this turn. */
   reinforcementsLeft?: number;
+  /** Daily.co voice chat room URL, set when voice chat is enabled. */
+  dailyRoomUrl?: string;
 }
 
 /** Tracks a disconnected player so they can reconnect within a grace period. */

@@ -361,6 +361,12 @@ export function useSocket() {
       });
     });
 
+    // ── Voice chat ────────────────────────────────────────────────────
+    socket.on('voice:roomReady' as any, (url: string) => {
+      console.log('[voice] Room ready:', url);
+      useGameStore.getState().setVoiceRoomUrl(url);
+    });
+
     // ── Errors ──────────────────────────────────────────────────────────
     // (duplicate removed - error listener already registered above at line ~93)
 

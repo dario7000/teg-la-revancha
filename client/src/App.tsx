@@ -20,6 +20,7 @@ import {
   RegroupSelector,
   PactPanel,
   ContinentCardPanel,
+  VoiceChat,
 } from './components/UI';
 import {
   VictoryModal,
@@ -178,6 +179,7 @@ function App() {
   const gameLog = useGameStore((s) => s.gameLog);
   const showDiceResult = useGameStore((s) => s.showDiceResult);
   const hideDice = useGameStore((s) => s.hideDice);
+  const voiceRoomUrl = useGameStore((s) => s.voiceRoomUrl);
 
   // -- Local UI state ------------------------------------------
   const [lobbyView, setLobbyView] = useState<LobbyView>('rooms');
@@ -1098,6 +1100,8 @@ function App() {
           onLeave={handleLeaveRoom}
           onUpdateSettings={socket.updateSettings}
         />
+        {/* Voice chat */}
+        <VoiceChat roomUrl={voiceRoomUrl} playerName={playerName} />
       </div>
     );
   }
@@ -1723,6 +1727,9 @@ function App() {
             onClose={handleVictoryClose}
           />
         )}
+
+        {/* Voice chat */}
+        <VoiceChat roomUrl={voiceRoomUrl} playerName={playerName} />
       </div>
     );
   }

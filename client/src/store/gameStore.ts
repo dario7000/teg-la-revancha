@@ -112,6 +112,7 @@ export interface GameStore {
   selectedCards: Set<number>;
   gameLog: LogEntry[];
   showDiceResult: DiceResult | null;
+  voiceRoomUrl: string | null;
 
   // Actions – connection
   setConnected: (connected: boolean) => void;
@@ -133,6 +134,7 @@ export interface GameStore {
   addLogEntry: (entry: LogEntry) => void;
   showDice: (result: DiceResult) => void;
   hideDice: () => void;
+  setVoiceRoomUrl: (url: string | null) => void;
 
   // Reset everything (e.g. on disconnect or when leaving a room)
   reset: () => void;
@@ -152,6 +154,7 @@ const initialState: Pick<
   | 'selectedCards'
   | 'gameLog'
   | 'showDiceResult'
+  | 'voiceRoomUrl'
 > = {
   connected: false,
   playerId: null,
@@ -163,6 +166,7 @@ const initialState: Pick<
   selectedCards: new Set<number>(),
   gameLog: [],
   showDiceResult: null,
+  voiceRoomUrl: null,
 };
 
 // ── Store creation ──────────────────────────────────────────────────────────
@@ -224,6 +228,8 @@ export const useGameStore = create<GameStore>()(
       showDice: (result) => set({ showDiceResult: result }),
 
       hideDice: () => set({ showDiceResult: null }),
+
+      setVoiceRoomUrl: (url) => set({ voiceRoomUrl: url }),
 
       // ── Reset ───────────────────────────────────────────────────────────
 
