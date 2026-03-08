@@ -1183,7 +1183,7 @@ function App() {
         {/* -- Setup phase banner (shown instead of TurnControls during SETUP) -- */}
         {isSetupPhase && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20">
-            <div className="bg-gray-900/90 backdrop-blur-sm border border-amber-700 rounded-2xl px-5 py-3 shadow-xl min-w-[400px]">
+            <div className="bg-gray-900/90 backdrop-blur-sm border border-amber-700 rounded-2xl px-5 py-3 shadow-xl w-[calc(100vw-2rem)] sm:w-auto sm:min-w-[400px]">
               <div className="flex items-center justify-between mb-1">
                 <div>
                   <span className="text-[10px] text-amber-500 uppercase tracking-wider">
@@ -1243,7 +1243,7 @@ function App() {
 
         {/* -- Status message bar ----------------------------------- */}
         {statusMessage && (
-          <div className="absolute bottom-40 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+          <div className="absolute bottom-24 sm:bottom-40 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
             <div className="bg-gray-900/90 backdrop-blur-sm border border-gray-600 rounded-xl px-4 py-2 shadow-lg">
               <span className="text-sm text-gray-200">{statusMessage}</span>
             </div>
@@ -1259,7 +1259,7 @@ function App() {
           gameState.territories[attackSource]?.missiles != null &&
           gameState.territories[attackSource].missiles! > 0 &&
           !missileFiring && (
-          <div className="absolute bottom-52 left-1/2 -translate-x-1/2 z-30">
+          <div className="absolute bottom-32 sm:bottom-52 left-1/2 -translate-x-1/2 z-30">
             <button
               onClick={() => {
                 setMissileFiring(true);
@@ -1274,7 +1274,7 @@ function App() {
 
         {/* -- Missile cancel button -------------------------------- */}
         {missileFiring && (
-          <div className="absolute bottom-52 left-1/2 -translate-x-1/2 z-30">
+          <div className="absolute bottom-32 sm:bottom-52 left-1/2 -translate-x-1/2 z-30">
             <button
               onClick={() => {
                 setMissileFiring(false);
@@ -1292,7 +1292,7 @@ function App() {
         {/* -- Conquest modal --------------------------------------- */}
         {conquestPending && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="bg-gray-900 border border-amber-600 rounded-2xl px-6 py-5 shadow-2xl min-w-[340px]">
+            <div className="bg-gray-900 border border-amber-600 rounded-2xl px-6 py-5 shadow-2xl w-[calc(100vw-3rem)] sm:min-w-[340px]">
               <h3 className="text-lg font-bold text-white mb-2">Territorio Conquistado</h3>
               <p className="text-sm text-gray-300 mb-4">
                 Mueve ejercitos de{' '}
@@ -1346,7 +1346,7 @@ function App() {
         )}
 
         {/* -- Player panel (top-left, overlaid) -------------------- */}
-        <div className="absolute left-2 top-2 z-20 flex flex-col gap-1 w-56">
+        <div className="absolute left-2 top-2 z-20 flex flex-col gap-1 w-44 sm:w-56">
           <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider px-2 mb-1">
             Jugadores
           </h3>

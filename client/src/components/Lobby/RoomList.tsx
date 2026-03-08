@@ -19,7 +19,7 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onJoinRoom, onCreateRoom, on
   const lobbyRooms = rooms.filter((r) => r.status === 'LOBBY');
 
   return (
-    <div className="bg-gray-800 rounded-xl p-8 w-full max-w-lg shadow-2xl border border-gray-700">
+    <div className="bg-gray-800 rounded-xl p-8 w-[calc(100vw-2rem)] sm:max-w-lg shadow-2xl border border-gray-700">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-white">Salas Disponibles</h2>
         <button
@@ -37,7 +37,7 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onJoinRoom, onCreateRoom, on
           <p className="text-sm">Crea una nueva sala para empezar a jugar</p>
         </div>
       ) : (
-        <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+        <div className="space-y-2 max-h-60 sm:max-h-80 overflow-y-auto pr-1">
           {lobbyRooms.map((room) => (
             <div
               key={room.id}

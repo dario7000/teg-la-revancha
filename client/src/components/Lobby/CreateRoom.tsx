@@ -17,7 +17,7 @@ const CreateRoom: React.FC<CreateRoomProps> = ({ onCreateRoom, onBack }) => {
   };
 
   return (
-    <div className="bg-gray-800 rounded-xl p-8 w-full max-w-md shadow-2xl border border-gray-700">
+    <div className="bg-gray-800 rounded-xl p-8 w-[calc(100vw-2rem)] sm:max-w-md shadow-2xl border border-gray-700">
       <h2 className="text-2xl font-bold text-white mb-6">Crear Sala</h2>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>

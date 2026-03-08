@@ -104,7 +104,7 @@ const TurnControls: React.FC<TurnControlsProps> = React.memo(
 
     return (
       <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20">
-        <div className="bg-gray-900/90 backdrop-blur-sm border border-gray-700 rounded-2xl px-5 py-3 shadow-xl min-w-[400px]">
+        <div className="bg-gray-900/90 backdrop-blur-sm border border-gray-700 rounded-2xl px-5 py-3 shadow-xl w-[calc(100vw-2rem)] sm:w-auto sm:min-w-[400px]">
           {/* Turn status + current phase display */}
           <div className="flex items-center justify-between mb-2">
             <div>
@@ -175,11 +175,11 @@ const TurnControls: React.FC<TurnControlsProps> = React.memo(
           )}
 
           {/* Phase buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Incorporar (+) */}
             <div
               className={`
-                flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                flex items-center gap-1.5 px-3 py-2.5 sm:py-1.5 rounded-lg text-xs font-medium
                 transition-all duration-150
                 ${
                   isReinforcePhase && isMyTurn
@@ -205,7 +205,7 @@ const TurnControls: React.FC<TurnControlsProps> = React.memo(
               onClick={canSkipToAttack ? onSkipToAttack : undefined}
               disabled={!canSkipToAttack && !isAttackPhase}
               className={`
-                flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                flex items-center gap-1.5 px-3 py-2.5 sm:py-1.5 rounded-lg text-xs font-medium
                 transition-all duration-150
                 ${
                   isAttackPhase && isMyTurn
@@ -238,7 +238,7 @@ const TurnControls: React.FC<TurnControlsProps> = React.memo(
               onClick={canSkipToRegroup ? onSkipToRegroup : undefined}
               disabled={!canSkipToRegroup && !isRegroupPhase}
               className={`
-                flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                flex items-center gap-1.5 px-3 py-2.5 sm:py-1.5 rounded-lg text-xs font-medium
                 transition-all duration-150
                 ${
                   isRegroupPhase && isMyTurn
@@ -271,7 +271,7 @@ const TurnControls: React.FC<TurnControlsProps> = React.memo(
               missileIncorporating ? (
                 <button
                   onClick={onCancelMissileMode}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 bg-gray-600 hover:bg-gray-500 text-gray-200 cursor-pointer shadow-md"
+                  className="flex items-center gap-1.5 px-3 py-2.5 sm:py-1.5 rounded-lg text-xs font-medium transition-all duration-150 bg-gray-600 hover:bg-gray-500 text-gray-200 cursor-pointer shadow-md"
                 >
                   <span>&#x2715;</span>
                   <span>Cancelar Misil</span>
@@ -281,7 +281,7 @@ const TurnControls: React.FC<TurnControlsProps> = React.memo(
                   onClick={canIncorporateMissile ? onIncorporateMissile : undefined}
                   disabled={!canIncorporateMissile}
                   className={`
-                    flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                    flex items-center gap-1.5 px-3 py-2.5 sm:py-1.5 rounded-lg text-xs font-medium
                     transition-all duration-150
                     ${
                       canIncorporateMissile
@@ -307,7 +307,7 @@ const TurnControls: React.FC<TurnControlsProps> = React.memo(
               onClick={onEndTurn}
               disabled={!canEndTurn}
               className={`
-                flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                flex items-center gap-1.5 px-3 py-2.5 sm:py-1.5 rounded-lg text-xs font-medium
                 transition-all duration-150
                 ${
                   canEndTurn
@@ -326,7 +326,7 @@ const TurnControls: React.FC<TurnControlsProps> = React.memo(
             {PHASE_ORDER.map((phase, i) => (
               <div
                 key={phase}
-                className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                className={`w-2.5 h-2.5 sm:w-1.5 sm:h-1.5 rounded-full transition-colors ${
                   i === currentIndex
                     ? 'bg-indigo-400'
                     : i < currentIndex

@@ -16,7 +16,7 @@ const NameInput: React.FC<NameInputProps> = ({ initialName, onSubmit }) => {
   };
 
   return (
-    <div className="bg-gray-800 rounded-xl p-8 w-full max-w-sm shadow-2xl border border-gray-700 text-center">
+    <div className="bg-gray-800 rounded-xl p-8 w-[calc(100vw-2rem)] sm:max-w-sm shadow-2xl border border-gray-700 text-center">
       <h1 className="text-3xl font-bold text-amber-400 mb-2">TEG La Revancha</h1>
       <p className="text-gray-400 mb-8">Online</p>
 

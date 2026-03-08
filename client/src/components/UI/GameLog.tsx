@@ -43,7 +43,7 @@ function formatTimestamp(ts: number): string {
 }
 
 const GameLog: React.FC<GameLogProps> = React.memo(({ events, onSendChat }) => {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const toggleCollapsed = useCallback(() => {
@@ -60,13 +60,13 @@ const GameLog: React.FC<GameLogProps> = React.memo(({ events, onSendChat }) => {
   return (
     <div
       className={`absolute right-2 top-2 z-20 flex flex-col transition-all duration-200 ${
-        collapsed ? 'w-10' : 'w-64'
+        collapsed ? 'w-10' : 'w-[calc(100vw-4rem)] sm:w-64'
       }`}
     >
       {/* Header / toggle button */}
       <button
         onClick={toggleCollapsed}
-        className="flex items-center justify-between bg-gray-800/90 backdrop-blur-sm border border-gray-700 rounded-t-lg px-3 py-2 hover:bg-gray-750 transition-colors"
+        className="flex items-center justify-between bg-gray-800/90 backdrop-blur-sm border border-gray-700 rounded-t-lg px-3 py-2 min-w-10 min-h-10 hover:bg-gray-750 transition-colors"
       >
         {!collapsed && (
           <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
@@ -97,7 +97,7 @@ const GameLog: React.FC<GameLogProps> = React.memo(({ events, onSendChat }) => {
               className="flex gap-2 px-3 py-1.5 border-b border-gray-800/50 last:border-b-0 hover:bg-gray-800/30"
             >
               {/* Timestamp */}
-              <span className="text-[9px] text-gray-600 font-mono shrink-0 pt-0.5">
+              <span className="text-[10px] sm:text-[9px] text-gray-600 font-mono shrink-0 pt-0.5">
                 {formatTimestamp(event.timestamp)}
               </span>
 
@@ -110,7 +110,7 @@ const GameLog: React.FC<GameLogProps> = React.memo(({ events, onSendChat }) => {
               )}
 
               {/* Message */}
-              <span className={`text-[11px] leading-tight ${getEventColor(event.type)}`}>
+              <span className={`text-xs sm:text-[11px] leading-tight ${getEventColor(event.type)}`}>
                 {event.message}
               </span>
             </div>
