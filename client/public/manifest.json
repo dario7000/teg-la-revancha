@@ -1,0 +1,14 @@
+{
+  "name": "TEG La Revancha Online",
+  "short_name": "TEG",
+  "description": "El clásico juego de estrategia argentino",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#1a1a2e",
+  "theme_color": "#e67e22",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

@@ -212,6 +212,7 @@ function App() {
   } | null>(null);
   // Active pacts panel
   const [showActivePacts, setShowActivePacts] = useState(false);
+  const [showPlayerPanel, setShowPlayerPanel] = useState(false);
   // Missile firing mode (ATTACK phase)
   const [missileFiring, setMissileFiring] = useState(false);
   const [missileSource, setMissileSource] = useState<string | null>(null);
@@ -1163,6 +1164,13 @@ function App() {
 
     return (
       <div className="h-screen w-screen bg-gray-900 flex flex-col overflow-hidden relative">
+        {/* Rotate message for portrait mobile */}
+        <div className="rotate-message">
+          <span className="text-4xl">📱</span>
+          <p>Gira el celular para jugar</p>
+          <p className="text-sm text-gray-400">TEG se juega mejor en horizontal</p>
+        </div>
+
         {/* -- Map (full background) -------------------------------- */}
         <div className="absolute inset-0">
           <GameMap
@@ -1249,6 +1257,93 @@ function App() {
             </div>
           </div>
         )}
+
+        {/* -- Country info popup ----------------------------------- */}
+        {selectedCountry && gameState.phase === 'PLAYING' && gameState.territories[selectedCountry] && (() => {
+          const territory = gameState.territories[selectedCountry];
+          const ownerId = territory.owner;
+          const ownerPlayer = gameState.players.find((p) => p.id === ownerId);
+          const ownerName = ownerPlayer?.name ?? 'Sin dueño';
+          const ownerColorHex = ownerPlayer?.color
+            ? (ownerPlayer.color === 'WHITE' ? '#F7FAFC' :
+               ownerPlayer.color === 'BLACK' ? '#2D3748' :
+               ownerPlayer.color === 'RED' ? '#E53E3E' :
+               ownerPlayer.color === 'BLUE' ? '#3182CE' :
+               ownerPlayer.color === 'YELLOW' ? '#ECC94B' :
+               ownerPlayer.color === 'GREEN' ? '#38A169' : '#888888')
+            : '#888888';
+          const isMine = ownerId === playerId;
+          const turnPhase = gameState.turnPhase;
+
+          return (
+            <div className="absolute bottom-28 sm:bottom-44 left-1/2 -translate-x-1/2 z-35 pointer-events-auto">
+              <div className="bg-gray-900/95 backdrop-blur-sm border border-gray-600 rounded-xl px-4 py-3 shadow-xl min-w-[200px] max-w-[280px]">
+                {/* Country name */}
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-bold text-white truncate">
+                    {selectedCountry.replace(/_/g, ' ')}
+                  </h4>
+                  <button
+                    onClick={() => selectCountry(null)}
+                    className="text-gray-500 hover:text-white text-xs ml-2 cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Owner info */}
+                <div className="flex items-center gap-2 mb-2">
+                  <span
+                    className="w-3 h-3 rounded-full border border-gray-500 shrink-0"
+                    style={{ backgroundColor: ownerColorHex }}
+                  />
+                  <span className="text-xs text-gray-300 truncate">
+                    {ownerName}{isMine ? ' (tu)' : ''}
+                  </span>
+                  <span className="text-xs font-bold text-amber-400 ml-auto whitespace-nowrap">
+                    {territory.armies} ej{territory.armies === 1 ? 'ército' : 'ércitos'}
+                  </span>
+                </div>
+
+                {/* Missiles indicator */}
+                {territory.missiles != null && territory.missiles > 0 && (
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <span className="text-xs text-red-400">
+                      Misiles: {territory.missiles}
+                    </span>
+                  </div>
+                )}
+
+                {/* Contextual action hint - only on mobile */}
+                {isMyTurn && (
+                  <div className="md:hidden border-t border-gray-700 pt-2 mt-1">
+                    {turnPhase === 'REINFORCE' && isMine && effectiveReinforcementsLeft > 0 && !missileIncorporating && (
+                      <span className="text-xs text-green-400">Toca para colocar ejército</span>
+                    )}
+                    {turnPhase === 'REINFORCE' && isMine && missileIncorporating && territory.armies >= 7 && (
+                      <span className="text-xs text-red-400">Toca para incorporar misil</span>
+                    )}
+                    {turnPhase === 'ATTACK' && !missileFiring && isMine && territory.armies >= 2 && !attackSource && (
+                      <span className="text-xs text-amber-400">Toca para atacar desde aquí</span>
+                    )}
+                    {turnPhase === 'ATTACK' && !missileFiring && !isMine && attackSource && areAdjacent(attackSource, selectedCountry) && (
+                      <span className="text-xs text-red-400">Toca para atacar este territorio</span>
+                    )}
+                    {turnPhase === 'ATTACK' && missileFiring && !isMine && (
+                      <span className="text-xs text-red-400">Toca para lanzar misil aquí</span>
+                    )}
+                    {turnPhase === 'REGROUP' && isMine && territory.armies >= 2 && !regroupSource && (
+                      <span className="text-xs text-blue-400">Toca para reagrupar desde aquí</span>
+                    )}
+                    {turnPhase === 'REGROUP' && isMine && regroupSource && regroupSource !== selectedCountry && areAdjacent(regroupSource, selectedCountry) && (
+                      <span className="text-xs text-blue-400">Toca para mover ejércitos aquí</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* -- Missile fire button ---------------------------------- */}
         {isMyTurn &&
@@ -1345,8 +1440,30 @@ function App() {
           />
         )}
 
-        {/* -- Player panel (top-left, overlaid) -------------------- */}
-        <div className="absolute left-2 top-2 z-20 flex flex-col gap-1 w-44 sm:w-56">
+        {/* -- Mobile player panel toggle button -------------------- */}
+        <button
+          onClick={() => setShowPlayerPanel(!showPlayerPanel)}
+          className="md:hidden fixed left-2 top-2 z-50 bg-gray-800/90 backdrop-blur-sm border border-gray-700 rounded-lg p-2 text-white"
+        >
+          {showPlayerPanel ? '\u2715' : '\u2630'}
+        </button>
+
+        {/* -- Mobile backdrop overlay ------------------------------ */}
+        {showPlayerPanel && (
+          <div
+            className="md:hidden fixed inset-0 z-30 bg-black/40"
+            onClick={() => setShowPlayerPanel(false)}
+          />
+        )}
+
+        {/* -- Player panel (top-left, overlaid / mobile drawer) ---- */}
+        <div
+          className={`
+            fixed left-0 top-0 bottom-0 z-40 w-52 bg-gray-900/95 backdrop-blur-sm transform transition-transform p-3 pt-12 flex flex-col gap-1 overflow-y-auto
+            ${showPlayerPanel ? 'translate-x-0' : '-translate-x-full'}
+            md:transform-none md:absolute md:left-2 md:top-2 md:bottom-auto md:z-20 md:w-56 md:bg-transparent md:backdrop-blur-none md:p-0 md:pt-0 md:overflow-visible
+          `}
+        >
           <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider px-2 mb-1">
             Jugadores
           </h3>
@@ -1400,39 +1517,39 @@ function App() {
               </div>
             );
           })}
-        </div>
 
-        {/* -- Pact toggle button (below player panel) --------------- */}
-        <div className="absolute left-2 z-20" style={{ top: `${(gameState.players.length * 48) + 56}px` }}>
-          <button
-            onClick={() => setShowActivePacts((prev) => !prev)}
-            className={`px-3 py-1.5 bg-gray-800/90 backdrop-blur-sm border rounded-lg text-xs transition-colors flex items-center gap-1.5 ${
-              showActivePacts
-                ? 'border-cyan-600 text-cyan-400'
-                : 'border-gray-700 hover:border-cyan-600 text-gray-300 hover:text-cyan-400'
-            }`}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            Pactos ({gameState.pacts.filter((p) => p.active).length})
-          </button>
+          {/* -- Pact toggle button (inside drawer on mobile) --------- */}
+          <div className="mt-2">
+            <button
+              onClick={() => setShowActivePacts((prev) => !prev)}
+              className={`px-3 py-1.5 bg-gray-800/90 backdrop-blur-sm border rounded-lg text-xs transition-colors flex items-center gap-1.5 ${
+                showActivePacts
+                  ? 'border-cyan-600 text-cyan-400'
+                  : 'border-gray-700 hover:border-cyan-600 text-gray-300 hover:text-cyan-400'
+              }`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Pactos ({gameState.pacts.filter((p) => p.active).length})
+            </button>
 
-          {showActivePacts && (
-            <div className="mt-1">
-              <PactPanel
-                pacts={gameState.pacts}
-                players={gameState.players}
-                currentPlayerId={playerId}
-                onBreakPact={(pactId) => socket.breakPact(pactId)}
-                onProposePact={() => {
-                  setShowActivePacts(false);
-                  setShowPactProposal(true);
-                }}
-                onClose={() => setShowActivePacts(false)}
-              />
-            </div>
-          )}
+            {showActivePacts && (
+              <div className="mt-1">
+                <PactPanel
+                  pacts={gameState.pacts}
+                  players={gameState.players}
+                  currentPlayerId={playerId}
+                  onBreakPact={(pactId) => socket.breakPact(pactId)}
+                  onProposePact={() => {
+                    setShowActivePacts(false);
+                    setShowPactProposal(true);
+                  }}
+                  onClose={() => setShowActivePacts(false)}
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* -- Pact player selection overlay ------------------------ */}
