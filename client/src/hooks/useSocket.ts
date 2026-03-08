@@ -51,17 +51,29 @@ export function useSocket() {
 
     socket.on('connect', () => {
       setConnected(true);
-      if (socket.id) {
-        setPlayerId(socket.id);
-      }
 
-      if (wasConnected) {
-        // This is a reconnection (not initial connect).
-        // Reset stale game state – the server will send a fresh
-        // game:fullState (with yourPlayerId) if the game still exists.
-        // If the server restarted, it won't know about us and we'll
-        // land back in the lobby cleanly.
-        reset();
+      // Check if we have a previous session to reconnect to
+      const store = useGameStore.getState();
+      const oldPlayerId = store.playerId;
+      const oldRoomId = store.roomId;
+
+      if (oldPlayerId && oldRoomId && oldPlayerId !== socket.id) {
+        // Attempt to reconnect to previous game
+        console.log('[reconnect] Attempting reconnection with playerId:', oldPlayerId);
+        socket.emit('room:reconnect' as any, oldPlayerId);
+        // Don't reset – wait for server response.
+        // On success the server sends room:joined + game:fullState.
+        // On failure the server sends an error and we clean up below.
+      } else {
+        // Fresh connection – set new playerId
+        if (socket.id) {
+          setPlayerId(socket.id);
+        }
+        if (wasConnected) {
+          // Socket.io auto-reconnected but we have no saved session to
+          // rejoin, so reset stale state and land in the lobby.
+          reset();
+        }
       }
       wasConnected = true;
     });
@@ -109,6 +121,15 @@ export function useSocket() {
     socket.on('error', (message: string) => {
       console.error('[TEG Server Error]', message);
       addLogEntry({ timestamp: Date.now(), type: 'error', message });
+
+      // If reconnection failed, clear stale session data and start fresh
+      if (message.toLowerCase().includes('reconnect')) {
+        console.log('[reconnect] Failed, clearing stale session');
+        if (socket.id) {
+          setPlayerId(socket.id);
+        }
+        setRoomState(null);
+      }
     });
 
     (socket as any).on('game:notification', (message: string) => {

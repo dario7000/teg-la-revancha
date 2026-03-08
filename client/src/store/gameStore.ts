@@ -235,9 +235,11 @@ export const useGameStore = create<GameStore>()(
     }),
     {
       name: 'teg-revancha-player',
-      // Only persist playerName to localStorage
+      // Persist playerName, playerId & roomId so we can reconnect after page reload
       partialize: (state) => ({
         playerName: state.playerName,
+        playerId: state.playerId,
+        roomId: state.roomId,
       }),
     },
   ),
