@@ -227,7 +227,6 @@ function App() {
   const [conquestPending, setConquestPending] = useState<ConquestPending | null>(null);
   const [conquestArmies, setConquestArmies] = useState<number>(1);
   // DEBUG: last click result
-  const [lastClickDebug, setLastClickDebug] = useState<string>('(ningún click aún)');
   // Track accumulated reinforcement placements before sending to server
   const [reinforcePlacements, setReinforcePlacements] = useState<Record<string, number>>({});
   const [reinforcementsSpent, setReinforcementsSpent] = useState(0);
@@ -660,13 +659,11 @@ function App() {
       console.log('[CLICK]', countryId, debugInfo);
 
       if (!gameState || !playerId) {
-        setLastClickDebug(`${countryId}: NO gameState o playerId`);
         return;
       }
 
       const territory = gameState.territories[countryId];
       if (!territory) {
-        setLastClickDebug(`${countryId}: territorio no encontrado en gameState`);
         return;
       }
 
@@ -676,22 +673,18 @@ function App() {
 
       // If conquest is pending, ignore regular clicks
       if (conquestPending) {
-        setLastClickDebug(`${countryId}: conquista pendiente`);
         return;
       }
 
       // -- SETUP PHASE ------------------------------------------
-      if (phase === 'SETUP_PLACE_8' || phase === 'SETUP_PLACE_4') {
+      if (phase === 'SETUP_PLACE_18' || phase === 'SETUP_PLACE_8' || phase === 'SETUP_PLACE_4') {
         if (!isMyTurn) {
-          setLastClickDebug(`${countryId}: NO es mi turno (yo=${playerId?.slice(-4)} turno=${gameState.currentPlayerId?.slice(-4)})`);
           return;
         }
         // Can only place on own territories
         if (!isMine) {
-          setLastClickDebug(`${countryId}: NO es mio (owner=${territory.owner?.slice(-4)} yo=${playerId?.slice(-4)})`);
           return;
         }
-        setLastClickDebug(`${countryId}: COLOCANDO ejercito!`);
         socket.placeArmies(countryId, 1);
         return;
       }
@@ -1110,8 +1103,8 @@ function App() {
   // ================================================================
   if (gameState) {
     // Determine if we're in setup
-    const isSetupPhase = gameState.phase === 'SETUP_PLACE_8' || gameState.phase === 'SETUP_PLACE_4';
-    const setupArmiesCount = gameState.phase === 'SETUP_PLACE_8' ? 8 : gameState.phase === 'SETUP_PLACE_4' ? 4 : 0;
+    const isSetupPhase = gameState.phase === 'SETUP_PLACE_8' || gameState.phase === 'SETUP_PLACE_4' || gameState.phase === 'SETUP_PLACE_18';
+    const setupArmiesCount = gameState.phase === 'SETUP_PLACE_18' ? 18 : gameState.phase === 'SETUP_PLACE_8' ? 8 : gameState.phase === 'SETUP_PLACE_4' ? 4 : 0;
 
     // Build contextual status message
     let statusMessage = '';
@@ -1183,34 +1176,6 @@ function App() {
           />
         </div>
 
-        {/* -- DEBUG PANEL (TEMPORARY) -------------------------------- */}
-        <div className="absolute top-2 right-2 z-50 bg-black/90 text-green-400 font-mono text-[10px] p-2 rounded border border-green-800 max-w-[340px] pointer-events-auto">
-          <div className="font-bold text-yellow-400 mb-1">DEBUG — {gameState.players?.find((p: any) => p.id === playerId)?.name ?? '?'}</div>
-          <div>playerId: {playerId?.slice(-8) ?? 'NULL'}</div>
-          <div>phase: {gameState.phase}</div>
-          <div>turnPhase: {gameState.turnPhase}</div>
-          <div>currentPlayer: {gameState.players?.find((p: any) => p.id === gameState.currentPlayerId)?.name ?? '?'} ({gameState.currentPlayerId?.slice(-8) ?? 'NULL'})</div>
-          <div className={isMyTurn ? 'text-green-300 font-bold' : 'text-red-400 font-bold'}>isMyTurn: {String(isMyTurn)}</div>
-          <div>isSetupPhase: {String(isSetupPhase)}</div>
-          <div>reinforcementsLeft: {gameState.reinforcementsLeft ?? 'undef'}</div>
-          <div>conquestPending: {String(!!conquestPending)}</div>
-          <div className="mt-1 border-t border-green-800 pt-1">
-            <div className="text-yellow-400">selected: {selectedCountry ?? 'none'}</div>
-            {selectedCountry && gameState.territories[selectedCountry] && (
-              <>
-                <div>owner: {gameState.territories[selectedCountry].owner?.slice(-8) ?? 'NULL'}</div>
-                <div>armies: {gameState.territories[selectedCountry].armies}</div>
-                <div>isMine: {String(gameState.territories[selectedCountry].owner === playerId)}</div>
-              </>
-            )}
-          </div>
-          <div className="mt-1 border-t border-green-800 pt-1 text-gray-500">
-            players: {gameState.players?.map((p: any) => `${p.name}(${p.id?.slice(-4)})`).join(', ')}
-          </div>
-          <div className="mt-1 border-t border-amber-800 pt-1 text-amber-300 font-bold">
-            ultimo click: {lastClickDebug}
-          </div>
-        </div>
 
         {/* -- Setup phase banner (shown instead of TurnControls during SETUP) -- */}
         {isSetupPhase && (
