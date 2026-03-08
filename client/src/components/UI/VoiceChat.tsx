@@ -36,29 +36,39 @@ export default function VoiceChat({ roomUrl, playerName }: VoiceChatProps) {
   }, []);
 
   const handleTrackStarted = useCallback((event: any) => {
+    console.log('[VoiceChat] track-started:', event.track?.kind, 'local:', event.participant?.local, 'session:', event.participant?.session_id);
+
     // Only handle audio tracks from remote participants
-    if (event.track.kind !== 'audio' || event.participant?.local) return;
+    if (!event.track || event.track.kind !== 'audio' || event.participant?.local) return;
 
     const sessionId = event.participant?.session_id;
     if (!sessionId) return;
 
-    // Create or reuse audio element
+    // Create or reuse audio element - MUST be in DOM for some browsers
     let audioEl = audioElementsRef.current.get(sessionId);
     if (!audioEl) {
       audioEl = document.createElement('audio');
+      audioEl.id = `daily-audio-${sessionId}`;
       audioEl.autoplay = true;
+      audioEl.setAttribute('playsinline', '');
+      audioEl.setAttribute('disableRemotePlayback', '');
+      document.body.appendChild(audioEl);
       audioElementsRef.current.set(sessionId, audioEl);
     }
 
     // Attach the track
-    audioEl.srcObject = new MediaStream([event.track]);
-    audioEl.play().catch((err: any) => {
+    const stream = new MediaStream([event.track]);
+    audioEl.srcObject = stream;
+    audioEl.volume = 1.0;
+    audioEl.play().then(() => {
+      console.log('[VoiceChat] Audio playing for', sessionId);
+    }).catch((err: any) => {
       console.warn('[VoiceChat] Audio play failed:', err);
     });
   }, []);
 
   const handleTrackStopped = useCallback((event: any) => {
-    if (event.track.kind !== 'audio' || event.participant?.local) return;
+    if (!event.track || event.track.kind !== 'audio' || event.participant?.local) return;
 
     const sessionId = event.participant?.session_id;
     if (!sessionId) return;
@@ -66,6 +76,7 @@ export default function VoiceChat({ roomUrl, playerName }: VoiceChatProps) {
     const audioEl = audioElementsRef.current.get(sessionId);
     if (audioEl) {
       audioEl.srcObject = null;
+      audioEl.remove(); // Remove from DOM
       audioElementsRef.current.delete(sessionId);
     }
   }, []);
@@ -78,15 +89,24 @@ export default function VoiceChat({ roomUrl, playerName }: VoiceChatProps) {
         audioSource: true,
         videoSource: false,
         userName: playerName,
+        startVideoOff: true,
+        subscribeToTracksAutomatically: true,
       });
+      console.log('[VoiceChat] Call object created, joining:', roomUrl);
 
       callFrameRef.current = daily;
       setCallFrame(daily);
 
       daily.on('joined-meeting', () => {
+        console.log('[VoiceChat] Joined meeting successfully');
         setIsConnected(true);
         daily.setLocalAudio(false); // start muted
         updateParticipants(daily);
+        // Log current participants and their tracks
+        const parts = daily.participants();
+        Object.values(parts).forEach((p: any) => {
+          console.log('[VoiceChat] Participant:', p.user_name, 'local:', p.local, 'audio:', p.tracks?.audio?.state);
+        });
       });
 
       daily.on('participant-joined', () => updateParticipants(daily));
@@ -130,6 +150,7 @@ export default function VoiceChat({ roomUrl, playerName }: VoiceChatProps) {
         // Clean up audio elements
         audioElementsRef.current.forEach((el) => {
           el.srcObject = null;
+          el.remove();
         });
         audioElementsRef.current.clear();
         callFrameRef.current.leave().catch(() => {});
