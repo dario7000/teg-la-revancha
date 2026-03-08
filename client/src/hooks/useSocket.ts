@@ -64,8 +64,8 @@ export function useSocket() {
         // Don't reset – wait for server response.
         // On success the server sends room:joined + game:fullState.
         // On failure the server sends an error and we clean up below.
-      } else {
-        // Fresh connection – set new playerId
+      } else if (!useGameStore.getState().gameState) {
+        // Fresh connection with no active game – set new playerId
         if (socket.id) {
           setPlayerId(socket.id);
         }
@@ -122,13 +122,20 @@ export function useSocket() {
       console.error('[TEG Server Error]', message);
       addLogEntry({ timestamp: Date.now(), type: 'error', message });
 
-      // If reconnection failed, clear stale session data and start fresh
+      // If reconnection failed, clear stale session data ONLY if we
+      // don't already have an active game (avoids clearing state when
+      // Socket.io does an internal re-connect / transport switch).
       if (message.toLowerCase().includes('reconnect')) {
-        console.log('[reconnect] Failed, clearing stale session');
-        if (socket.id) {
-          setPlayerId(socket.id);
+        const currentState = useGameStore.getState();
+        if (!currentState.gameState) {
+          console.log('[reconnect] Failed, clearing stale session');
+          if (socket.id) {
+            setPlayerId(socket.id);
+          }
+          setRoomState(null);
+        } else {
+          console.log('[reconnect] Failed but game state exists, keeping session');
         }
-        setRoomState(null);
       }
     });
 
