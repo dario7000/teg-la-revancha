@@ -22,6 +22,7 @@ export default function VoiceChat({ roomUrl, playerName }: VoiceChatProps) {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [showPermissionPrompt, setShowPermissionPrompt] = useState(false);
   const callFrameRef = useRef<DailyCall | null>(null);
+  const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 
   const updateParticipants = useCallback((daily: DailyCall) => {
     const parts = daily.participants();
@@ -32,6 +33,41 @@ export default function VoiceChat({ roomUrl, playerName }: VoiceChatProps) {
       local: p.local,
     }));
     setParticipants(mapped);
+  }, []);
+
+  const handleTrackStarted = useCallback((event: any) => {
+    // Only handle audio tracks from remote participants
+    if (event.track.kind !== 'audio' || event.participant?.local) return;
+
+    const sessionId = event.participant?.session_id;
+    if (!sessionId) return;
+
+    // Create or reuse audio element
+    let audioEl = audioElementsRef.current.get(sessionId);
+    if (!audioEl) {
+      audioEl = document.createElement('audio');
+      audioEl.autoplay = true;
+      audioElementsRef.current.set(sessionId, audioEl);
+    }
+
+    // Attach the track
+    audioEl.srcObject = new MediaStream([event.track]);
+    audioEl.play().catch((err: any) => {
+      console.warn('[VoiceChat] Audio play failed:', err);
+    });
+  }, []);
+
+  const handleTrackStopped = useCallback((event: any) => {
+    if (event.track.kind !== 'audio' || event.participant?.local) return;
+
+    const sessionId = event.participant?.session_id;
+    if (!sessionId) return;
+
+    const audioEl = audioElementsRef.current.get(sessionId);
+    if (audioEl) {
+      audioEl.srcObject = null;
+      audioElementsRef.current.delete(sessionId);
+    }
   }, []);
 
   const joinVoice = useCallback(async () => {
@@ -55,7 +91,20 @@ export default function VoiceChat({ roomUrl, playerName }: VoiceChatProps) {
 
       daily.on('participant-joined', () => updateParticipants(daily));
       daily.on('participant-updated', () => updateParticipants(daily));
-      daily.on('participant-left', () => updateParticipants(daily));
+      daily.on('participant-left', (event: any) => {
+        updateParticipants(daily);
+        // Clean up audio element for the leaving participant
+        if (event?.participant?.session_id) {
+          const audioEl = audioElementsRef.current.get(event.participant.session_id);
+          if (audioEl) {
+            audioEl.srcObject = null;
+            audioElementsRef.current.delete(event.participant.session_id);
+          }
+        }
+      });
+
+      daily.on('track-started', handleTrackStarted);
+      daily.on('track-stopped', handleTrackStopped);
 
       daily.on('left-meeting', () => {
         setIsConnected(false);
@@ -72,12 +121,17 @@ export default function VoiceChat({ roomUrl, playerName }: VoiceChatProps) {
       console.error('[VoiceChat] Failed to join:', err);
       setHasPermission(false);
     }
-  }, [roomUrl, playerName, updateParticipants]);
+  }, [roomUrl, playerName, updateParticipants, handleTrackStarted, handleTrackStopped]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (callFrameRef.current) {
+        // Clean up audio elements
+        audioElementsRef.current.forEach((el) => {
+          el.srcObject = null;
+        });
+        audioElementsRef.current.clear();
         callFrameRef.current.leave().catch(() => {});
         callFrameRef.current.destroy();
         callFrameRef.current = null;
@@ -95,6 +149,11 @@ export default function VoiceChat({ roomUrl, playerName }: VoiceChatProps) {
 
   const leaveVoice = useCallback(() => {
     if (callFrameRef.current) {
+      // Clean up audio elements
+      audioElementsRef.current.forEach((el) => {
+        el.srcObject = null;
+      });
+      audioElementsRef.current.clear();
       callFrameRef.current.leave().catch(() => {});
       callFrameRef.current.destroy();
       callFrameRef.current = null;
