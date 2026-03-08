@@ -1022,6 +1022,9 @@ function App() {
           <span className="text-xs text-gray-400">
             {connected ? 'Conectado' : 'Conectando...'}
           </span>
+          <span className="text-[9px] text-gray-600 max-w-[200px] truncate" title={import.meta.env.VITE_SERVER_URL || 'localhost:3001'}>
+            {import.meta.env.VITE_SERVER_URL || 'localhost:3001'}
+          </span>
         </div>
 
         {/* Player name badge */}
